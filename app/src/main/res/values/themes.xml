@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.TRACE" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#00E676</item>
+        <item name="colorPrimaryVariant">#00C853</item>
+        <item name="colorOnPrimary">#000000</item>
+        <item name="colorSurface">#161B22</item>
+        <item name="colorOnSurface">#E6EDF3</item>
+        <item name="android:windowBackground">#0D1117</item>
+    </style>
+</resources>

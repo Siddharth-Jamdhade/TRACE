@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- READ_MEDIA_VIDEO is required on Android 13+ to pick videos from the gallery -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <!-- Fallback for Android 12 and below -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-feature android:name="android.hardware.camera.any" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.TRACE">
+
+        <!-- Launcher activity: sensor hub + live camera preview -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Timeline: event list + query engine -->
+        <activity
+            android:name=".TimelineActivity"
+            android:exported="false" />
+
+        <!-- Event detail: evidence viewer + Confirm/Reject + hash chain -->
+        <activity
+            android:name=".EventDetailActivity"
+            android:exported="false" />
+
+        <!-- Video import: pick videos + ML Kit analysis -->
+        <activity
+            android:name=".VideoImportActivity"
+            android:exported="false" />
+
+        <!--
+            FileProvider — lets us share the exported events.json file
+            via the share sheet without needing WRITE_EXTERNAL_STORAGE.
+            authorities must match ${packageName}.fileprovider used in code.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+    </application>
+
+</manifest>

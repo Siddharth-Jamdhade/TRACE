@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!--
+        FileProvider paths for TRACE exports.
+        cache-path covers getCacheDir() where events.json is written before sharing.
+        external-files-path covers getExternalFilesDir() permanent copy.
+    -->
+    <cache-path name="trace_cache" path="." />
+    <external-files-path name="trace_external" path="TRACE/" />
+</paths>

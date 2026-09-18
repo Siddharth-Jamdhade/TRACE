@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0D1117">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- Status banner -->
+        <LinearLayout
+            android:id="@+id/statusCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:background="#1A1A2E">
+
+            <TextView
+                android:id="@+id/tvStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#FFFFFF"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.1"
+                android:text="UNCONFIRMED" />
+
+            <TextView
+                android:id="@+id/tvEventType"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#E6EDF3"
+                android:textSize="15sp"
+                android:layout_marginTop="4dp"
+                android:text="Object moves" />
+
+            <TextView
+                android:id="@+id/tvTimestamp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#8B949E"
+                android:textSize="12sp"
+                android:fontFamily="monospace"
+                android:layout_marginTop="2dp"
+                android:text="Sep 17, 2026  10:45:00" />
+
+            <TextView
+                android:id="@+id/tvSource"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#484F58"
+                android:textSize="11sp"
+                android:layout_marginTop="2dp"
+                android:text="Primary source: motion" />
+
+        </LinearLayout>
+
+        <!-- Sensor confidence section -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="SENSOR EVIDENCE"
+            android:textColor="#00E676"
+            android:textSize="10sp"
+            android:letterSpacing="0.15"
+            android:fontFamily="monospace"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Camera row -->
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginBottom="10dp">
+            <TextView android:id="@+id/tvCameraConf" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#8B949E" android:textSize="12sp" android:fontFamily="monospace" android:text="Camera:  0%" />
+            <ProgressBar android:id="@+id/progressCamera" style="@android:style/Widget.ProgressBar.Horizontal" android:layout_width="match_parent" android:layout_height="8dp" android:layout_marginTop="4dp" android:progressTint="#58A6FF" android:progressBackgroundTint="#21262D" android:max="100" android:progress="0" />
+        </LinearLayout>
+
+        <!-- Audio row -->
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginBottom="10dp">
+            <TextView android:id="@+id/tvAudioConf" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#8B949E" android:textSize="12sp" android:fontFamily="monospace" android:text="Audio:   0%" />
+            <ProgressBar android:id="@+id/progressAudio" style="@android:style/Widget.ProgressBar.Horizontal" android:layout_width="match_parent" android:layout_height="8dp" android:layout_marginTop="4dp" android:progressTint="#F85149" android:progressBackgroundTint="#21262D" android:max="100" android:progress="0" />
+        </LinearLayout>
+
+        <!-- Motion row -->
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginBottom="10dp">
+            <TextView android:id="@+id/tvMotionConf" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#8B949E" android:textSize="12sp" android:fontFamily="monospace" android:text="Motion:  0%" />
+            <ProgressBar android:id="@+id/progressMotion" style="@android:style/Widget.ProgressBar.Horizontal" android:layout_width="match_parent" android:layout_height="8dp" android:layout_marginTop="4dp" android:progressTint="#00E676" android:progressBackgroundTint="#21262D" android:max="100" android:progress="0" />
+        </LinearLayout>
+
+        <!-- Explanation -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="EXPLANATION"
+            android:textColor="#00E676"
+            android:textSize="10sp"
+            android:letterSpacing="0.15"
+            android:fontFamily="monospace"
+            android:layout_marginTop="10dp"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:id="@+id/tvExplanation"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="12dp"
+            android:textColor="#8B949E"
+            android:textSize="12sp"
+            android:lineSpacingExtra="4dp"
+            android:fontFamily="monospace"
+            android:background="#161B22"
+            android:text="..." />
+
+        <!-- Human review buttons -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="HUMAN REVIEW"
+            android:textColor="#00E676"
+            android:textSize="10sp"
+            android:letterSpacing="0.15"
+            android:fontFamily="monospace"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="8dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:weightSum="2">
+
+            <Button
+                android:id="@+id/btnConfirm"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="6dp"
+                android:text="CONFIRM"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:backgroundTint="#1B5E20" />
+
+            <Button
+                android:id="@+id/btnReject"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:text="REJECT"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:backgroundTint="#B71C1C" />
+
+        </LinearLayout>
+
+        <!-- Evidence clip -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="EVIDENCE CLIP"
+            android:textColor="#00E676"
+            android:textSize="10sp"
+            android:letterSpacing="0.15"
+            android:fontFamily="monospace"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:id="@+id/tvEvidenceStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#484F58"
+            android:textSize="12sp"
+            android:text="No evidence clip saved." />
+
+        <Button
+            android:id="@+id/btnPlayEvidence"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="PLAY EVIDENCE CLIP"
+            android:textColor="#000000"
+            android:textStyle="bold"
+            android:backgroundTint="#00E676"
+            android:visibility="gone" />
+
+        <!-- Hash chain integrity -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="TAMPER EVIDENCE"
+            android:textColor="#00E676"
+            android:textSize="10sp"
+            android:letterSpacing="0.15"
+            android:fontFamily="monospace"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:id="@+id/tvHashStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:text="Integrity: checking..." />
+
+        <TextView
+            android:id="@+id/tvHashValue"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#484F58"
+            android:textSize="11sp"
+            android:fontFamily="monospace"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="16dp"
+            android:text="" />
+
+    </LinearLayout>
+</ScrollView>
