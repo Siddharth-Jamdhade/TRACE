@@ -1,6 +1,8 @@
 package com.example.trace
 
 import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.hardware.Sensor
@@ -22,6 +24,7 @@ import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.example.trace.databinding.ActivityMainBinding
 import kotlinx.coroutines.CoroutineScope
@@ -32,6 +35,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * TRACE — Main Activity
@@ -92,6 +96,16 @@ class MainActivity : AppCompatActivity() {
     // Dedicated single-thread executor so ImageAnalysis never blocks the main thread.
     private val cameraExecutor = Executors.newSingleThreadExecutor()
 
+    // ── Feature C: Evidence Lock ──────────────────────────────────────────
+    // Shared with TimelineActivity via SharedPreferences key "evidence_locked"
+    private val evidenceLocked = AtomicBoolean(false)
+    private val PREFS_NAME     = "trace_prefs"
+    private val KEY_LOCKED     = "evidence_locked"
+
+    // ── Feature B: Notifications ──────────────────────────────────────────
+    private val NOTIF_CHANNEL_ID = "trace_confirmed"
+    private var notifId          = 1000
+
     // ── Tuning constants ─────────────────────────────────────────────
     // Motion: idle jerk < 1. A firm tap peaks ~5, a hard shake ~15-25.
     // Old values (16.25 / 65) required an extreme shake to fire — now lowered.
@@ -151,12 +165,41 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         // KEEP SCREEN ON during demo so the OS never kills TRACE mid-recording.
-        // The phone screen must stay lit for sensors to keep running.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         database = TraceDatabase.getInstance(this)
 
-        // Load the existing event count from DB so the counter is correct after app restart
+        // Feature C: restore lock state from SharedPreferences (survives app restart)
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        evidenceLocked.set(prefs.getBoolean(KEY_LOCKED, false))
+
+        // Feature B: Create notification channel (required on Android 8+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                NOTIF_CHANNEL_ID,
+                "TRACE Confirmed Events",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Fires when TRACE confirms an incident via multi-sensor fusion"
+                enableVibration(true)
+            }
+            getSystemService(NotificationManager::class.java)
+                .createNotificationChannel(channel)
+        }
+
+        // Feature B: Request notification permission on Android 13+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                    101
+                )
+            }
+        }
+
+        // Load existing event count from DB
         appScope.launch {
             val count = database.eventDao().getAllEvents().size
             runOnUiThread {
@@ -387,6 +430,9 @@ class MainActivity : AppCompatActivity() {
     // ── Observation -> Event -> Storage pipeline ──────────────────────────
 
     private fun onObservation(obs: Observation) {
+        // Feature C: if evidence is locked, silently drop new observations
+        if (evidenceLocked.get()) return
+
         val eventType = EventExtractor.extract(obs) ?: return
 
         // Cooldown gate: same event type fires at most once per second.
@@ -434,6 +480,14 @@ class MainActivity : AppCompatActivity() {
                     lastEventType = eventType.replace("_", " "),
                     lastStatus    = finalEvent.status
                 )
+                // Feature A: update live sensor confidence HUD
+                updateLiveHud(obs.source, obs.confidence)
+            }
+
+            // Feature B: fire a push notification when multi-sensor fusion CONFIRMS an incident
+            if (finalEvent.status == "CONFIRMED") {
+                fireConfirmedNotification(eventType, finalEvent.cameraConfidence,
+                    finalEvent.audioConfidence, finalEvent.motionConfidence)
             }
 
             // Step 6: save a copy of the current audio clip as evidence (best-effort)
@@ -519,4 +573,47 @@ class MainActivity : AppCompatActivity() {
             Log.e("TRACE", "Recorder restart failed", e)
         }
     }
+
+    // ── Feature A: Live Sensor Confidence HUD ────────────────────────────
+
+    /** Updates the coloured confidence readouts on the main HUD. Must be called on UI thread. */
+    private fun updateLiveHud(source: String, confidence: Float) {
+        val pct = "${"%.0f".format(confidence * 100)}%"
+        when (source) {
+            "camera" -> binding.tvCameraLive.text = "📷 $pct"
+            "audio"  -> binding.tvAudioLive.text  = "🔊 $pct"
+            "motion" -> binding.tvMotionLive.text  = "📳 $pct"
+        }
+    }
+
+    // ── Feature B: CONFIRMED Push Notification ────────────────────────────
+
+    /** Fires a high-priority system notification when multi-sensor fusion confirms an incident. */
+    private fun fireConfirmedNotification(
+        eventType: String,
+        camConf: Float?,
+        audioConf: Float?,
+        motionConf: Float?
+    ) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED) return
+
+        val title = "CONFIRMED: ${eventType.replace("_", " ").replaceFirstChar { it.uppercase() }}"
+        val body  = buildString {
+            if (camConf    != null) append("📷 ${"%.0f".format(camConf    * 100)}%  ")
+            if (audioConf  != null) append("🔊 ${"%.0f".format(audioConf  * 100)}%  ")
+            if (motionConf != null) append("📳 ${"%.0f".format(motionConf * 100)}%")
+        }.trim().ifEmpty { "Multi-sensor agreement detected" }
+
+        val notification = NotificationCompat.Builder(this, NOTIF_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .build()
+
+        getSystemService(NotificationManager::class.java).notify(notifId++, notification)
+    }
 }
+

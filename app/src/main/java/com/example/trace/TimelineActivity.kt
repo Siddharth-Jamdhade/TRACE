@@ -70,6 +70,30 @@ class TimelineActivity : AppCompatActivity() {
             if (actionId == EditorInfo.IME_ACTION_DONE) { runQuery(); true } else false
         }
 
+        // Feature C: Lock Evidence button
+        val prefs = getSharedPreferences("trace_prefs", MODE_PRIVATE)
+        val alreadyLocked = prefs.getBoolean("evidence_locked", false)
+        if (alreadyLocked) {
+            binding.tvLockedBanner.visibility = View.VISIBLE
+            binding.btnLockEvidence.isEnabled = false
+            binding.btnLockEvidence.text = "🔒 LOCKED"
+        }
+
+        binding.btnLockEvidence.setOnClickListener {
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("🔒 Lock Evidence?")
+                .setMessage("This will permanently stop recording new events. The current timeline will be sealed and cannot be modified.\n\nProceed?")
+                .setPositiveButton("LOCK IT") { _, _ ->
+                    prefs.edit().putBoolean("evidence_locked", true).apply()
+                    binding.tvLockedBanner.visibility = View.VISIBLE
+                    binding.btnLockEvidence.isEnabled = false
+                    binding.btnLockEvidence.text = "🔒 LOCKED"
+                    Toast.makeText(this, "Evidence chain locked. No new events will be recorded.", Toast.LENGTH_LONG).show()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+
         loadEvents()
     }
 

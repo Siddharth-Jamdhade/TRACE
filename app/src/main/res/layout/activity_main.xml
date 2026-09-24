@@ -35,7 +35,49 @@
             android:layout_width="match_parent"
             android:layout_height="2dp"
             android:background="#00E676"
-            android:layout_marginBottom="10dp" />
+            android:layout_marginBottom="8dp" />
+
+        <!-- FEATURE A: Live Sensor Confidence Row -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="6dp">
+
+            <TextView
+                android:id="@+id/tvCameraLive"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="📷 --"
+                android:textColor="#58A6FF"
+                android:textSize="11sp"
+                android:fontFamily="monospace"
+                android:gravity="center" />
+
+            <TextView
+                android:id="@+id/tvAudioLive"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="🔊 --"
+                android:textColor="#F85149"
+                android:textSize="11sp"
+                android:fontFamily="monospace"
+                android:gravity="center" />
+
+            <TextView
+                android:id="@+id/tvMotionLive"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="📳 --"
+                android:textColor="#00E676"
+                android:textSize="11sp"
+                android:fontFamily="monospace"
+                android:gravity="center" />
+
+        </LinearLayout>
 
         <TextView
             android:id="@+id/statusText"

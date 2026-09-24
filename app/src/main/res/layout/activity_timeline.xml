@@ -5,6 +5,21 @@
     android:orientation="vertical"
     android:background="#0D1117">
 
+    <!-- FEATURE C: Locked banner (hidden by default) -->
+    <TextView
+        android:id="@+id/tvLockedBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="🔒 EVIDENCE LOCKED — No new events will be recorded"
+        android:textColor="#000000"
+        android:textStyle="bold"
+        android:textSize="13sp"
+        android:fontFamily="monospace"
+        android:gravity="center"
+        android:padding="10dp"
+        android:background="#F85149"
+        android:visibility="gone" />
+
     <!-- Query bar -->
     <LinearLayout
         android:layout_width="match_parent"
@@ -55,18 +70,42 @@
         android:background="#161B22"
         android:visibility="gone" />
 
-    <!-- Section label -->
-    <TextView
+    <!-- Section label + Lock button row -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingStart="14dp"
-        android:paddingTop="10dp"
-        android:paddingBottom="6dp"
-        android:text="INCIDENT TIMELINE"
-        android:textColor="#00E676"
-        android:textSize="10sp"
-        android:letterSpacing="0.15"
-        android:fontFamily="monospace" />
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:paddingStart="14dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="6dp"
+            android:text="INCIDENT TIMELINE"
+            android:textColor="#00E676"
+            android:textSize="10sp"
+            android:letterSpacing="0.15"
+            android:fontFamily="monospace" />
+
+        <!-- FEATURE C: Lock Evidence Button -->
+        <Button
+            android:id="@+id/btnLockEvidence"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:layout_marginEnd="10dp"
+            android:layout_marginTop="4dp"
+            android:text="🔒 LOCK"
+            android:textColor="#F85149"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:backgroundTint="#1A1A2E"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp" />
+
+    </LinearLayout>
 
     <!-- Event list -->
     <androidx.recyclerview.widget.RecyclerView

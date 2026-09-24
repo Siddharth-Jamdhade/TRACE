@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>TRACE - Pitch Deck</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
+        
+        :root {
+            --bg-color: #0D1117;
+            --card-bg: #161B22;
+            --accent: #00E676;
+            --text-main: #E6EDF3;
+            --text-muted: #8B949E;
+            --error: #F85149;
+            --warning: #FFD600;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Space Grotesk', sans-serif;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+
+        .slide {
+            width: 100vw;
+            height: 100vh;
+            box-sizing: border-box;
+            padding: 60px 80px;
+            page-break-after: always;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            position: relative;
+            background-color: var(--bg-color);
+            overflow: hidden;
+        }
+
+        .slide::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 6px;
+            background: linear-gradient(90deg, var(--accent) 0%, #008b47 100%);
+        }
+
+        .slide-number {
+            position: absolute;
+            bottom: 40px;
+            right: 80px;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-muted);
+            font-size: 16px;
+        }
+
+        h1 {
+            color: var(--accent);
+            font-size: 72px;
+            margin-bottom: 20px;
+            margin-top: 0;
+            line-height: 1.1;
+        }
+
+        h2 {
+            color: var(--accent);
+            font-size: 48px;
+            margin-bottom: 40px;
+            margin-top: 0;
+        }
+
+        h3 {
+            font-size: 28px;
+            margin-bottom: 20px;
+            color: var(--text-main);
+        }
+
+        p, li {
+            font-size: 26px;
+            line-height: 1.6;
+            color: var(--text-main);
+            margin-bottom: 20px;
+        }
+
+        ul {
+            padding-left: 30px;
+        }
+
+        li {
+            margin-bottom: 24px;
+        }
+
+        .hero-slide {
+            align-items: center;
+            text-align: center;
+        }
+
+        .hero-slide h1 {
+            font-size: 100px;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            margin-bottom: 10px;
+            text-shadow: 0 0 20px rgba(0, 230, 118, 0.3);
+        }
+
+        .hero-slide .subtitle {
+            font-size: 32px;
+            color: var(--text-main);
+            max-width: 800px;
+            margin-bottom: 50px;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            height: 100%;
+            align-items: center;
+        }
+
+        .card {
+            background: var(--card-bg);
+            padding: 30px;
+            border-radius: 12px;
+            border-left: 4px solid var(--accent);
+            margin-bottom: 20px;
+        }
+
+        .card-red { border-left-color: var(--error); }
+        .card-yellow { border-left-color: var(--warning); }
+
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 16px;
+            font-family: 'JetBrains Mono', monospace;
+            margin-right: 10px;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+        }
+
+        @media print {
+            @page {
+                size: 16in 9in; /* 16:9 Aspect Ratio */
+                margin: 0;
+            }
+            body {
+                background-color: var(--bg-color);
+            }
+            .slide {
+                width: 16in;
+                height: 9in;
+                page-break-after: always;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- SLIDE 1: TITLE -->
+    <div class="slide hero-slide">
+        <h1>TRACE</h1>
+        <div class="subtitle">Tamper-Resistant Autonomous Capture Environment</div>
+        <p style="color: var(--text-muted); font-family: 'JetBrains Mono', monospace;">iQOO Hackathon Submission</p>
+        <div style="margin-top: 40px;">
+            <span class="tag">Android</span>
+            <span class="tag">On-Device AI</span>
+            <span class="tag">Sensor Fusion</span>
+            <span class="tag">Cryptography</span>
+        </div>
+        <div class="slide-number">01</div>
+    </div>
+
+    <!-- SLIDE 2: THE PROBLEM -->
+    <div class="slide">
+        <h2>The Problem</h2>
+        <div class="grid-2">
+            <div>
+                <div class="card card-red">
+                    <h3>Deepfakes & Manipulation</h3>
+                    <p>Digital evidence is increasingly easy to fake. AI-generated audio and video make it impossible to trust raw media files.</p>
+                </div>
+                <div class="card card-red">
+                    <h3>Single Point of Failure</h3>
+                    <p>Existing security apps rely on just one sensor (only video or only audio). They lack environmental context and are prone to false positives.</p>
+                </div>
+            </div>
+            <div>
+                <div class="card card-red">
+                    <h3>No Chain of Custody</h3>
+                    <p>Once a video is recorded on a phone, there's no cryptographic proof that it hasn't been edited or trimmed before being presented.</p>
+                </div>
+            </div>
+        </div>
+        <div class="slide-number">02</div>
+    </div>
+
+    <!-- SLIDE 3: THE SOLUTION -->
+    <div class="slide">
+        <h2>The Solution: TRACE</h2>
+        <p>TRACE turns any Android phone into an <strong>autonomous, tamper-proof evidence gathering platform</strong>. The mobile phone isn't just a viewer—it is the main intelligence hub.</p>
+        
+        <ul>
+            <li><strong>Continuous Monitoring:</strong> Simultaneously watches (Camera), listens (Mic), and feels (Accelerometer) the environment.</li>
+            <li><strong>Sensor Fusion:</strong> Cross-references multiple sensors in real-time. If the camera sees an impact but the accelerometer feels nothing, TRACE flags it as unconfirmed.</li>
+            <li><strong>Cryptographic Proof:</strong> Every event is permanently sealed in a SHA-256 hash chain. If one frame or log is deleted, the entire chain invalidates.</li>
+            <li><strong>100% Offline:</strong> No cloud processing. Complete privacy using on-device ML.</li>
+        </ul>
+        <div class="slide-number">03</div>
+    </div>
+
+    <!-- SLIDE 4: HOW IT WORKS -->
+    <div class="slide">
+        <h2>Architecture & Data Flow</h2>
+        <div class="card" style="background: transparent; border: 1px solid #30363d; padding: 40px;">
+            <div class="mono" style="font-size: 20px; line-height: 2;">
+                <span style="color: var(--accent)">1. OBSERVATION:</span> Sensors detect a spike (e.g., motion jerk > 3.0, mic amp > 1500).<br><br>
+                <span style="color: var(--accent)">2. EXTRACTION:</span> Mapped to categories ('impact', 'alarm', 'object_moves').<br><br>
+                <span style="color: var(--warning)">3. FUSION ENGINE:</span> Checks other sensors in a 2s window. ≥2 strong sensors = CONFIRMED.<br><br>
+                <span style="color: var(--accent)">4. HASH CHAIN:</span> SHA-256 hash generated incorporating the previous event's hash.<br><br>
+                <span style="color: var(--accent)">5. STORAGE:</span> Saved to Room DB. Live .amr audio clip securely copied.
+            </div>
+        </div>
+        <div class="slide-number">04</div>
+    </div>
+
+    <!-- SLIDE 5: KEY FEATURES -->
+    <div class="slide">
+        <h2>Key Features</h2>
+        <div class="grid-2">
+            <div>
+                <h3>🎥 Smart Video Import</h3>
+                <p>Upload random video clips. TRACE sorts them chronologically by metadata, analyzes frames every 5s using ML Kit Image Labeling, and integrates them into the timeline.</p>
+            </div>
+            <div>
+                <h3>💬 NLP Query Engine</h3>
+                <p>Ask plain-English questions like <i>"what happened before the alarm?"</i> TRACE searches the local database and returns contextual answers without needing an LLM.</p>
+            </div>
+            <div>
+                <h3>🛡️ Honest AI</h3>
+                <p>We don't blindly trust AI. TRACE explicitly separates <span style="color: var(--accent)">CONFIRMED</span> (multi-sensor agreement) from <span style="color: var(--warning)">UNCONFIRMED</span> (single-sensor) events.</p>
+            </div>
+            <div>
+                <h3>🎨 Cyberpunk UI</h3>
+                <p>A beautifully designed, immersive HUD. Features live camera backgrounds, chronological timelines, and color-coded confidence bars.</p>
+            </div>
+        </div>
+        <div class="slide-number">05</div>
+    </div>
+
+    <!-- SLIDE 6: TECH STACK -->
+    <div class="slide">
+        <h2>Technical Stack</h2>
+        <div class="card">
+            <ul>
+                <li><strong>Language:</strong> 100% Kotlin</li>
+                <li><strong>Concurrency:</strong> Kotlin Coroutines & Flow for non-blocking sensor polling</li>
+                <li><strong>Local Database:</strong> Android Room (SQLite)</li>
+                <li><strong>Machine Learning:</strong> Google ML Kit (Object Detection & Image Labeling)</li>
+                <li><strong>Hardware APIs:</strong> CameraX, SensorManager, MediaRecorder</li>
+                <li><strong>UI:</strong> XML Layouts + Material Components</li>
+            </ul>
+        </div>
+        <p style="text-align: center; margin-top: 40px; color: var(--accent);">Ready for production. Built for the iQOO Hackathon.</p>
+        <div class="slide-number">06</div>
+    </div>
+
+</body>
+</html>
