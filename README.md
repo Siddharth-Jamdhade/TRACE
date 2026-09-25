@@ -74,6 +74,7 @@ Every sensor below feeds the same Observation → EventExtractor → FusionEngin
 | 🎛️ **Per-Session Sensor Set** | The chosen set is part of the hashed session header, so it is fixed for the session and cannot be quietly widened later. Only those pipelines are started |
 | 🎥 **Camera-Free Sessions** | With the camera toggled off, the viewfinder is replaced by the list of sensors that *are* capturing — and the camera is never bound at all. A black preview would look like a fault at the moment the app is working as configured |
 | ⏹️ **Explicit End** | *End Session* asks first (one tap must not seal a recording), stops capture and closes the session as `COMPLETED` with its duration, event count and confirmed count |
+| 🎛️ **Foreground Capture Service** | While a session is armed, all pipelines run in a foreground service (`camera|microphone` type) — capture **survives the screen turning off and the app leaving the foreground**. The persistent notification shows the session, event count and an *End session* action; a system kill leaves the session `INTERRUPTED`, never a fake recording |
 
 ### Intelligence
 | Feature | Description |
@@ -81,13 +82,17 @@ Every sensor below feeds the same Observation → EventExtractor → FusionEngin
 | ⚡ **Sensor Fusion Engine** | Cross-references all sensors in a ±2s window *within the same session*. ≥2 sensors agreeing → `CONFIRMED`. 1 sensor → `UNCONFIRMED`. 0 → `REJECTED`. Manual tags are excluded from the source count, so one operator tap can never masquerade as two sensors agreeing |
 | 🔐 **SHA-256 Hash Chain** | Every event is cryptographically chained to the previous event **of its session**. Tampering breaks that session's chain permanently — and cannot invalidate any other session |
 | 💬 **NLP Query Engine** | Ask plain-English questions like *"what happened before the alarm?"* — answered from local DB with zero internet |
+| ☁️ **Cloud AI Chat** | Chat about a session with **Groq, Google AI Studio or OpenRouter** (all OpenAI-compatible). Bring your own API key and model name — stored encrypted on-device; the session's event log (text only: labels, statuses, times, confidences — never audio or photos) is the grounding context. Answers are review tooling and are never written into the evidence chain |
 
 ### Evidence
 | Feature | Description |
 |---------|-------------|
 | 🎵 **Audio Evidence Clips** | Real `.amr` audio snapshot saved for every event — stop → copy → restart pattern guarantees playback |
 | 📸 **Camera Snapshots** | One JPEG frame frozen at the moment of each event (and each operator tag), saved alongside the audio clip. Best-effort and independent: a failed snapshot never fails the event, and camera-free sessions simply log that there is none |
+| 🧬 **Evidence File Integrity** | Every clip and snapshot is SHA-256-hashed at write time and stored on the event row; the detail screen re-verifies the file on view. Replaced or tampered evidence is flagged loudly instead of silently accepted |
+| 🔐 **Private-by-default Storage** | Evidence (database, clips, snapshots) lives in **internal app-private storage** — no other app, file manager or MTP session can read it; cloud backup and device-transfer are explicitly excluded; older installs are migrated off the previously readable `Android/data` location on first launch |
 | 📊 **Incident Timeline** | Chronological log with color-coded status pills (🟢 CONFIRMED / 🟡 UNCONFIRMED / 🔴 REJECTED / 🟣 MANUAL) |
+| 🗂️ **Previous Sessions** | Session-grouped review: state, duration and counts per session; chain + header verification; per-session JSON export; session-scoped AI chat; and a delete that removes the audio clips and snapshots along with the rows (blocked while Evidence Lock is on; the live session cannot delete itself) |
 | ✋ **Manual Incident Tag** | The operator asserts what happened — `TAG INCIDENT` on the live view offers the sensor vocabulary (object fell, impact, door, alarm, person, lights, other). Recorded as source `manual` with status `MANUAL`: full chain evidence, but explicitly *not* a sensor verdict |
 | 🎥 **Smart Video Import** | Pick random video clips → TRACE sorts by creation timestamp → extracts keyframes with ML Kit → adds to timeline |
 | 📤 **JSON Export** | Export entire evidence chain to `events.json` for review in the standalone `trace_viewer.html` laptop viewer |

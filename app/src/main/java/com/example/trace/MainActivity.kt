@@ -1,34 +1,21 @@
 package com.example.trace
 
 import android.Manifest
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.media.MediaRecorder
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
-import android.util.Size
 import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.ImageCapture
-import androidx.camera.core.ImageCaptureException
-import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
-import androidx.camera.core.UseCase
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
-import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.trace.databinding.ActivityMainBinding
@@ -37,16 +24,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.runBlocking
-import java.io.File
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -116,91 +97,20 @@ class MainActivity : AppCompatActivity() {
     )
     private val PERMISSION_REQUEST_CODE = 100
 
-    // ── Microphone ────────────────────────────────────────────────────────
-    //
-    // The recorder is owned by ONE thread, [audioDispatcher], because
-    // MediaRecorder is not thread-safe: maxAmplitude() is only legal between
-    // start() and stop(), and this pipeline stops and recreates the recorder to
-    // freeze each evidence clip.
-    //
-    // Previously the DB/IO coroutine stopped and recreated the recorder while the
-    // main thread polled maxAmplitude() on that same instance (an uncaught
-    // IllegalStateException on the demo phone), and two events arriving together
-    // could both restart it — leaking a recorder, copying a half-written clip, and
-    // leaving audio capture silently dead for the rest of the session.
-    //
-    // Everything that touches [mediaRecorder] or [recorderStarted] runs on
-    // [audioDispatcher]. Do not read or write them from anywhere else.
-    private val audioExecutor = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "trace-audio").apply { isDaemon = true }
-    }
-    private val audioDispatcher = audioExecutor.asCoroutineDispatcher()
-
-    private var mediaRecorder: MediaRecorder? = null
-    private var recorderStarted = false
-
-    /** Audio thread only. Set during teardown so a late clip save cannot reopen the mic. */
-    private var audioTornDown = false
-
-    private val TEMP_AUDIO_FILE = "temp_audio.amr"
-    private val EVIDENCE_DIR = "TRACE"
-    private val EVIDENCE_EXT = ".amr"
-    private val AMPLITUDE_POLL_MS = 150L
-
-    /** Number of polls (~1 s at [AMPLITUDE_POLL_MS]) between mic reopen attempts. */
-    private val REOPEN_RETRY_POLLS = 7
-
-    // ── Motion ────────────────────────────────────────────────────────────
-    private lateinit var sensorManager: SensorManager
-    private var lastX = Float.NaN
-    private var lastY = Float.NaN
-    private var lastZ = Float.NaN
-    private var lastMotionJerk = 0f
-
-    // ── Extended sensor array (magnetometer, barometer, light, linear, gyro,
-    //    step, sigmotion). All feed the same Observation pipeline.
-    private val baseline = RollingBaseline()
-    /** Magnetometer listener — steel doors and large metal objects near the phone. */
-    private lateinit var magnetListener: SensorEventListener
-    private lateinit var baroListener: SensorEventListener
-    private lateinit var linearListener: SensorEventListener
-    private lateinit var gyroListener: SensorEventListener
-    private lateinit var stepListener: SensorEventListener
-    private lateinit var lightListener: SensorEventListener
-    private lateinit var sigMotionListener: SensorEventListener
-    private var sigMotionTriggeredAt = 0L
-
-    // ── Camera analysis ───────────────────────────────────────────────────
-    private var previousFrame: ByteArray? = null
-    // Dedicated single-thread executor so ImageAnalysis never blocks the main thread.
-    private val cameraExecutor = Executors.newSingleThreadExecutor()
-
-    //
-    // Snapshot capture (still-image evidence).
-    //
-    // Bound only while a session that selected the camera is armed — a preview
-    // is not evidence, and nothing may be photographed outside an armed session.
-    // One in-flight capture at a time: a busy flag drops the requests that arrive
-    // while a save is running rather than queueing stills from an event seconds
-    // past, which would attach the wrong moment to the record.
-    //
-    private var imageCapture: ImageCapture? = null
-
-    /** True while a snapshot save is running; further requests are dropped. */
-    @Volatile
-    private var capturePending = false
-
-    // ── Feature C: Evidence Lock ──────────────────────────────────────────
+    // ── Evidence Lock ─────────────────────────────────────────────────────
     // Shared with TimelineActivity + VideoImportActivity via [EvidenceLock].
     private val evidenceLocked = AtomicBoolean(false)
 
-    // ── Feature B: Notifications ──────────────────────────────────────────
-    // Silent channel — see onCreate. The ID changed from "trace_confirmed"
-    // because a channel's sound/vibration settings are immutable after
-    // creation, so a fresh ID is the only way to make an existing install quiet.
-    private val NOTIF_CHANNEL_ID        = "trace_alerts_v2"
-    private val LEGACY_NOTIF_CHANNEL_ID = "trace_confirmed"
-    private var notifId                 = 1000
+    // Running event count shown live on screen (mirrored from [LiveBus])
+    private var eventCount = 0
+
+    /**
+     * Live transcript for the dashboard's log tail — shared with
+     * [CaptureService] through [LiveBus]: the service writes the lines produced
+     * by capture, the UI writes lifecycle lines. One transcript per process.
+     */
+    private val sessionLog: SessionLog get() = LiveBus.log
+    private val logAdapter = SessionLogAdapter()
 
     // ── Tuning constants ─────────────────────────────────────────────
     // Motion: idle jerk < 1. A firm tap peaks ~5, a hard shake ~15-25.
@@ -229,21 +139,51 @@ class MainActivity : AppCompatActivity() {
     /** Cancels the pending banner hide when a newer confirm replaces it. */
     private var bannerHide: Job? = null
 
-    // ── Event cooldown ────────────────────────────────────────────────────
-    // ConcurrentHashMap because camera (cameraExecutor thread), audio (main), and
-    // motion (main) all write to this map concurrently.
-    private val lastEventTime = ConcurrentHashMap<String, Long>()
-    private val EVENT_COOLDOWN_MS = 1000L
+    /** Last CONFIRMED timestamp this screen has rendered (from [LiveBus]). */
+    private var lastRenderedConfirmAt = 0L
 
-    // Running event count shown live on screen (updated on main thread only)
-    private var eventCount = 0
+    /** This screen's own preview use case, unbound without touching the service's. */
+    private var previewUseCase: Preview? = null
 
     /**
-     * Live transcript for the dashboard's log tail. A runtime surface only —
-     * the evidence of record is the hash-chained database.
+     * Binds the viewfinder preview — this screen's only camera role.
+     *
+     * Deliberately never unbindAll(): while a session is capturing, the service
+     * owns analysis + snapshot use cases on the same camera and they must
+     * survive this screen rebinding its preview.
      */
-    private val sessionLog = SessionLog()
-    private val logAdapter = SessionLogAdapter()
+    private fun bindPreviewOnly() {
+        val future = ProcessCameraProvider.getInstance(this)
+        future.addListener({
+            try {
+                val provider = future.get()
+                previewUseCase?.let { runCatching { provider.unbind(it) } }
+                val preview = Preview.Builder().build().also {
+                    it.setSurfaceProvider(binding.cameraPreview.surfaceProvider)
+                }
+                previewUseCase = preview
+                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview)
+            } catch (e: Exception) {
+                Log.e("TRACE", "Camera failed", e)
+                binding.statusText.text = "Camera failed: ${e.message}"
+                appendLog(SessionLog.Kind.ERROR, "camera failed: ${e.message}")
+            }
+        }, ContextCompat.getMainExecutor(this))
+    }
+
+    /** Releases this screen's preview only. */
+    private fun unbindCamera() {
+        val preview = previewUseCase
+        previewUseCase = null
+        val future = ProcessCameraProvider.getInstance(this)
+        future.addListener({
+            try {
+                preview?.let { future.get().unbind(it) }
+            } catch (e: Exception) {
+                Log.w("TRACE", "Preview unbind failed", e)
+            }
+        }, ContextCompat.getMainExecutor(this))
+    }
 
     /** The open manual-tag chooser, if any. Stops a double tap stacking two dialogs. */
     private var tagDialog: AlertDialog? = null
@@ -256,10 +196,6 @@ class MainActivity : AppCompatActivity() {
      * invalidate the chain that already anchors on it.
      */
     private var armedSensorIds: Set<String> = emptySet()
-
-    /** True while the audio poll loop should be running. Audio thread reads it. */
-    @Volatile
-    private var micActive = false
 
     /**
      * What an operator can assert they saw.
@@ -280,30 +216,6 @@ class MainActivity : AppCompatActivity() {
         "lights_off"     to "Lights off",
         "other"          to "Something else"
     )
-
-    // ── Accelerometer listener ────────────────────────────────────────────
-    private val sensorListener = object : SensorEventListener {
-        override fun onSensorChanged(event: SensorEvent) {
-            val x = event.values[0]
-            val y = event.values[1]
-            val z = event.values[2]
-            // Skip the first reading — lastX is NaN on startup and would produce
-            // a massive fake jerk from 0 → ~9.8 m/s² (gravity) that blocks real events.
-            if (lastX.isNaN()) { lastX = x; lastY = y; lastZ = z; return }
-            val dX = x - lastX
-            val dY = y - lastY
-            val dZ = z - lastZ
-            val jerk = kotlin.math.sqrt(dX * dX + dY * dY + dZ * dZ)
-            lastMotionJerk = jerk
-            if (DEBUG_RAW_VALUES) Log.d("TRACE", "RAW jerk = $jerk")
-            val confidence = toConfidence(jerk, MOTION_THRESHOLD, MOTION_MAX)
-            if (confidence > 0f) {
-                onObservation(Observation("motion", confidence, System.currentTimeMillis()))
-            }
-            lastX = x; lastY = y; lastZ = z
-        }
-        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-    }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
 
@@ -331,31 +243,10 @@ class MainActivity : AppCompatActivity() {
         // Feature C: restore lock state (survives app restart)
         evidenceLocked.set(EvidenceLock.isLocked(this))
 
-        // Feature B: notification channel (required on Android 8+).
-        //
-        // TRACE must never make noise or vibrate during a live session, so this
-        // channel is silent: no sound, no vibration, no lights, and IMPORTANCE_LOW
-        // so it never takes over the screen. The channel stays in place because a
-        // foreground-service notification will need it once background capture
-        // exists (Stage 3+).
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val notificationManager = getSystemService(NotificationManager::class.java)
-            val channel = NotificationChannel(
-                NOTIF_CHANNEL_ID,
-                "TRACE Confirmed Events",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Silent alert when TRACE confirms an incident via multi-sensor fusion"
-                setSound(null, null)
-                enableVibration(false)
-                enableLights(false)
-            }
-            notificationManager.createNotificationChannel(channel)
-            // Retire the old noisy channel — its settings cannot be edited.
-            notificationManager.deleteNotificationChannel(LEGACY_NOTIF_CHANNEL_ID)
-        }
-
-        // Feature B: Request notification permission on Android 13+
+        // Notification channels live in [CaptureService] now (it owns both the
+        // recording notice and the silent CONFIRMED alerts). The permission
+        // request stays here: without POST_NOTIFICATIONS the recording notice
+        // is invisible, which reads as "the app is doing something in secret".
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
@@ -423,9 +314,8 @@ class MainActivity : AppCompatActivity() {
      * app bar's REC state truthful.
      */
     private fun onCaptureReady() {
-        sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
-        createSensorListeners()
-        Log.i("TRACE", "Sensor availability:\n${SensorRegistry.availabilityReport(sensorManager)}")
+        // Capture hardware is owned by [CaptureService]; this screen only shows
+        // the preview and drives the lifecycle.
 
         // Preview only, so the operator can point the phone before arming.
         refreshCaptureLayout()
@@ -449,17 +339,15 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 activeSession = existing
                 armedSensorIds = existing?.sensorIds?.toSet() ?: emptySet()
-                eventCount = count
+                eventCount = LiveBus.eventCount
                 if (existing != null) {
                     Log.i("TRACE", "Resumed session ${existing.id} with ${armedSensorIds.size} sensors")
-                    // Evidence captured while this screen was dead must not be
-                    // attributed to the wrong session: the flag is per-process.
-                    capturePending = false
-                    // The buffer died with the previous instance; rebuild the tail
-                    // from the chain so entries recorded while the screen was away
-                    // are visible again.
+                    // Re-attach capture if the service is not already running
+                    // (first launch of a session armed before a re-creation).
+                    if (!CaptureService.running) CaptureService.start(this@MainActivity)
+                    // The buffer may have died with the previous instance;
+                    // rebuild the tail from the chain.
                     seedLogFromDb(existing.id, count)
-                    startCapture()
                     appendLog(
                         SessionLog.Kind.LIFECYCLE,
                         "session resumed · ${armedSensorIds.size} sensor(s) · $count event(s)"
@@ -500,13 +388,16 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 activeSession = session
                 armedSensorIds = session.sensorIds.toSet()
+                LiveBus.eventCount = 0
+                LiveBus.confCamera = 0f
+                LiveBus.confAudio = 0f
+                LiveBus.confMotion = 0f
                 eventCount = 0
-                lastEventTime.clear()
                 // A new session is a new transcript: leftovers from the last
                 // recording must not read as part of this one.
                 sessionLog.clear()
                 refreshLog()
-                startCapture()
+                CaptureService.start(this@MainActivity)
                 appendLog(
                     SessionLog.Kind.LIFECYCLE,
                     "session started · ${armedSensorIds.size} sensor(s)" +
@@ -536,7 +427,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun endSession() {
         val session = activeSession ?: return
-        stopCapture()
+        // Stop capture first: no evidence may be produced after the operator
+        // has decided to end. The service tears down and stops itself.
+        CaptureService.stop(this)
 
         appScope.launch {
             val closed = SessionManager.endSession(
@@ -548,6 +441,10 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 activeSession = null
                 armedSensorIds = emptySet()
+                LiveBus.eventCount = 0
+                LiveBus.confCamera = 0f
+                LiveBus.confAudio = 0f
+                LiveBus.confMotion = 0f
                 eventCount = 0
                 bannerHide?.cancel()
                 binding.confirmedBanner.visibility = View.GONE
@@ -575,55 +472,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Starts every pipeline the armed sensor set contains.
-     *
-     * Resets the rolling baselines and the frame/camera state first: the app may
-     * have been idle for a while, and a stale EWMA or a frame from ten minutes ago
-     * would fire a large false event in the first second of a new session.
-     */
-    private fun startCapture() {
-        val ids = armedSensorIds
-        previousFrame = null
-        baseline.resetAll()
-        lastX = Float.NaN
-        lastY = Float.NaN
-        lastZ = Float.NaN
-
-        registerArmedSensors()
-        if (SensorRegistry.AUDIO.id in ids) startMicMonitoring() else stopMicMonitoring()
-        refreshCaptureLayout()
-
-        // Snapshot evidence needs its pipe bound before the first event can fire;
-        // refreshCaptureLayout may just have rebound without it on a resume.
-        if (SensorRegistry.CAMERA.id in ids) {
-            bindCamera(
-                withAnalysis = true,
-                wantSnapshot = true
-            )
-        } else {
-            imageCapture = null
-        }
-
-        // Name the selected pipelines this device cannot feed BEFORE they can be
-        // mistaken for a quiet scene. startCapture runs on the main thread.
-        val missing = armedSensorIds
-            .mapNotNull { id -> SensorRegistry.byId(id) }
-            .filter { it.type > 0 && sensorManager.getDefaultSensor(it.type) == null }
-            .map { "${it.icon} ${SensorRegistry.labelFor(it.id)}" }
-        if (missing.isNotEmpty()) {
-            appendLog(SessionLog.Kind.INFO, "not on this device: ${missing.joinToString(", ")}")
-        }
-
-        Log.i("TRACE", "Capture armed: ${ids.joinToString(", ")}")
-    }
-
-    /** Stops capture without touching the session record. */
-    private fun stopCapture() {
-        unregisterArmedSensors()
-        stopMicMonitoring()
-    }
-
     // ── Capture layout ────────────────────────────────────────────────────
 
     /**
@@ -647,17 +495,8 @@ class MainActivity : AppCompatActivity() {
         if (!showPreview) binding.tvSensorPanelList.text = sensorPanelText()
 
         if (showPreview && allPermissionsGranted()) {
-            // Analysis and snapshot only while a session that wants them is armed:
-            // the preview on its own costs nothing and is not evidence.
-            bindCamera(
-                withAnalysis = capturing && cameraSelected,
-                wantSnapshot = capturing && cameraSelected
-            )
+            bindPreviewOnly()
         } else {
-            // Nothing may be photographed outside an armed session — a preview
-            // alone must never leave a usable capture pipe bound.
-            imageCapture = null
-            capturePending = false
             unbindCamera()
         }
     }
@@ -714,6 +553,26 @@ class MainActivity : AppCompatActivity() {
         statusTicker = uiScope.launch {
             while (isActive) {
                 updateSessionStatus()
+                if (activeSession != null) {
+                    // The service produces evidence while this screen may be
+                    // paused; while resumed, mirror its live state here.
+                    eventCount = LiveBus.eventCount
+                    binding.tvCameraLive.text = "📷 ${"%.0f".format(LiveBus.confCamera * 100)}%"
+                    binding.tvAudioLive.text = "🔊 ${"%.0f".format(LiveBus.confAudio * 100)}%"
+                    binding.tvMotionLive.text = "📳 ${"%.0f".format(LiveBus.confMotion * 100)}%"
+                    binding.tvLogCount.text = "$eventCount event(s)"
+                    if (LiveBus.lastConfirmedAt > lastRenderedConfirmAt) {
+                        lastRenderedConfirmAt = LiveBus.lastConfirmedAt
+                        binding.confirmedBanner.visibility = View.VISIBLE
+                        binding.tvConfirmedText.text = LiveBus.lastConfirmedText
+                        bannerHide?.cancel()
+                        bannerHide = uiScope.launch {
+                            delay(BANNER_VISIBLE_MS)
+                            binding.confirmedBanner.visibility = View.GONE
+                        }
+                    }
+                    refreshLog()
+                }
                 delay(STATUS_TICK_MS)
             }
         }
@@ -821,10 +680,10 @@ class MainActivity : AppCompatActivity() {
 
     /** Handles the app bar's actions. */
     private fun onAppBarAction(itemId: Int): Boolean = when (itemId) {
-        // Previous Sessions. Timeline is today's event browser; Stage 5 replaces it
-        // with the session-grouped list.
+        // Previous Sessions: the session-grouped entry point. The flat
+        // all-events timeline stays reachable from the sessions list's menu.
         R.id.action_sessions -> {
-            startActivity(Intent(this, TimelineActivity::class.java))
+            startActivity(Intent(this, SessionsActivity::class.java))
             true
         }
         R.id.action_settings -> {
@@ -838,12 +697,9 @@ class MainActivity : AppCompatActivity() {
         super.onPause()
         statusTicker?.cancel()
 
-        // Detach while the screen is off. The session stays open — pausing is not
-        // ending a recording. The mic is released too, because Android mutes
-        // background capture anyway: a live recorder would keep producing silence
-        // and hand useless "evidence" clips to events that fire on return.
-        unregisterArmedSensors()
-        stopMicMonitoring()
+        // Nothing to detach: capture belongs to [CaptureService], which keeps
+        // running when the screen turns off — that is the whole point of the
+        // foreground service. The preview below only freezes with the screen.
     }
 
     override fun onResume() {
@@ -871,743 +727,35 @@ class MainActivity : AppCompatActivity() {
             appendLog(SessionLog.Kind.ERROR, "Evidence Lock is on — new observations are dropped")
         }
 
-        if (activeSession != null) {
-            registerArmedSensors()
-            if (SensorRegistry.AUDIO.id in armedSensorIds) startMicMonitoring()
+        if (activeSession != null && !CaptureService.running) {
+            // A session armed before this screen existed (or a service the
+            // system killed) — re-attach capture.
+            CaptureService.start(this)
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        unregisterArmedSensors()
-
-        // Stop producing new work before tearing anything down.
-        cameraExecutor.shutdown()
         appScope.cancel()
 
-        // The recorder belongs to [audioDispatcher], so its teardown has to run
-        // there. runBlocking guarantees the mic is released before the process moves
-        // on — appScope is already cancelled, and the closing session aggregates
-        // must be written too.
-        runBlocking {
-            withContext(audioDispatcher) {
-                audioTornDown = true
-                stopRecorder()
-            }
-
-            // Close the session only when the user actually leaves the app. A
-            // process kill or a configuration change leaves it ACTIVE, and the next
-            // launch recovers it as INTERRUPTED.
-            if (isFinishing) {
-                activeSession?.let { session ->
+        // The session record stays open when this screen dies: the service owns
+        // capture, and a process kill leaves the session ACTIVE for the next
+        // launch to recover as INTERRUPTED. Only an explicit user exit ends it.
+        if (isFinishing) {
+            activeSession?.let { session ->
+                CaptureService.stop(this)
+                kotlinx.coroutines.runBlocking {
                     SessionManager.endSession(
                         database.sessionDao(),
                         database.eventDao(),
                         session.id
                     )
-                    activeSession = null
                 }
+                activeSession = null
             }
         }
-        audioDispatcher.close()
         uiScope.cancel()
     }
-
-    // ── Camera ────────────────────────────────────────────────────────────
-
-    /**
-     * Binds the viewfinder, with frame analysis only when asked for.
-     *
-     * The two modes exist because a preview is not evidence: before a session is
-     * armed there is nothing to analyse, and in a session that does not capture the
-     * camera there is nothing that may be analysed.
-     */
-    private fun bindCamera(withAnalysis: Boolean, wantSnapshot: Boolean) {
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-        cameraProviderFuture.addListener({
-            try {
-                val cameraProvider = cameraProviderFuture.get()
-
-                val preview = Preview.Builder().build().also {
-                    it.setSurfaceProvider(binding.cameraPreview.surfaceProvider)
-                }
-
-                val useCases = mutableListOf<UseCase>(preview)
-                if (withAnalysis) useCases += buildImageAnalysis()
-                if (wantSnapshot) {
-                    imageCapture = ImageCapture.Builder()
-                        .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                        .build()
-                    useCases += imageCapture!!
-                }
-
-                cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(
-                    this,
-                    CameraSelector.DEFAULT_BACK_CAMERA,
-                    *useCases.toTypedArray()
-                )
-            } catch (e: Exception) {
-                Log.e("TRACE", "Camera failed", e)
-                binding.statusText.text = "Camera failed: ${e.message}"
-                appendLog(SessionLog.Kind.ERROR, "camera failed: ${e.message}")
-            }
-        }, ContextCompat.getMainExecutor(this))
-    }
-
-    /** Frame analysis for visual change detection. */
-    private fun buildImageAnalysis(): ImageAnalysis {
-        @Suppress("DEPRECATION")
-        val imageAnalysis = ImageAnalysis.Builder()
-            .setTargetResolution(Size(320, 240))   // low-res is enough for diff
-            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-            .build()
-        imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
-            analyzeFrame(imageProxy)
-        }
-        return imageAnalysis
-    }
-
-    /** Releases the camera, e.g. for a session that does not capture it. */
-    private fun unbindCamera() {
-        ProcessCameraProvider.getInstance(this).addListener({
-            try {
-                ProcessCameraProvider.getInstance(this).get().unbindAll()
-            } catch (e: Exception) {
-                Log.w("TRACE", "Camera unbind failed", e)
-            }
-        }, ContextCompat.getMainExecutor(this))
-    }
-
-    /**
-     * Grayscale frame differencing.
-     * Samples every 4th pixel of the Y-plane for speed, computes the fraction
-     * of pixels that changed by more than 30 grey levels, and emits a camera
-     * Observation if it exceeds the threshold.
-     */
-    private fun analyzeFrame(imageProxy: ImageProxy) {
-        try {
-            val buffer = imageProxy.planes[0].buffer   // Y plane = grayscale
-            val data   = ByteArray(buffer.remaining())
-            buffer.get(data)
-
-            val prev = previousFrame
-            if (prev != null && prev.size == data.size) {
-                var changedSamples = 0
-                var i = 0
-                while (i < data.size) {
-                    val diff = kotlin.math.abs(
-                        (data[i].toInt() and 0xFF) - (prev[i].toInt() and 0xFF)
-                    )
-                    if (diff > 30) changedSamples++
-                    i += 4   // sample every 4th pixel
-                }
-                val totalSamples = data.size / 4
-                val changeRatio  = changedSamples.toFloat() / totalSamples
-                if (DEBUG_RAW_VALUES) Log.d("TRACE", "RAW frame change = ${"%.3f".format(changeRatio)}")
-
-                val confidence = toConfidence(changeRatio, CAMERA_CHANGE_THRESHOLD, CAMERA_MAX_CHANGE)
-                if (confidence > 0f) {
-                    onObservation(Observation("camera", confidence, System.currentTimeMillis()))
-                }
-            }
-            previousFrame = data
-        } finally {
-            imageProxy.close()   // MUST always close, even on exception
-        }
-    }
-
-    // ── Microphone ────────────────────────────────────────────────────────
-
-    /**
-     * Starts the audio capture loop on [audioDispatcher].
-     *
-     * Suspending between polls is what lets a clip save run on the same thread: the
-     * loop yields the thread while it waits, and the recorder is never touched from
-     * two places at once.
-     */
-    private fun startMicMonitoring() {
-        if (micActive) return
-        micActive = true
-
-        appScope.launch(audioDispatcher) {
-            var pollsSinceReopen = REOPEN_RETRY_POLLS   // try immediately
-
-            while (isActive && micActive) {
-                if (!recorderStarted) {
-                    // Reopen after a failed clip freeze, retried at most once a
-                    // second so an unavailable mic cannot spin.
-                    if (pollsSinceReopen >= REOPEN_RETRY_POLLS) {
-                        openRecorder()
-                        pollsSinceReopen = 0
-                    }
-                    pollsSinceReopen++
-                } else {
-                    pollsSinceReopen = 0
-                    val amplitude = readAmplitude()
-                    if (DEBUG_RAW_VALUES) Log.d("TRACE", "RAW amplitude = $amplitude")
-
-                    val confidence = toConfidence(
-                        amplitude.toFloat(),
-                        AUDIO_THRESHOLD.toFloat(),
-                        AUDIO_MAX.toFloat()
-                    )
-                    if (confidence > 0f) {
-                        onObservation(Observation("audio", confidence, System.currentTimeMillis()))
-                    }
-                    // The status bar is updated in updateStatusBar() only when real
-                    // events fire — not with raw numbers every 150 ms.
-                }
-                delay(AMPLITUDE_POLL_MS)
-            }
-        }
-    }
-
-    /**
-     * Ends the audio poll loop and closes the recorder on its own thread.
-     *
-     * Closing where the recorder lives keeps the single-owner rule that removed the
-     * stop/poll race. Capture can be armed again later: the loop reopens the
-     * recorder when it next starts.
-     */
-    private fun stopMicMonitoring() {
-        micActive = false
-        appScope.launch(audioDispatcher) {
-            if (!audioTornDown) stopRecorder()
-        }
-    }
-
-    /**
-     * Creates and starts the recorder on a fresh temp file.
-     * Audio thread only. Returns true when capture is running.
-     */
-    private fun openRecorder(): Boolean {
-        if (audioTornDown) return false
-
-        val recorder = try {
-            newRecorder()
-        } catch (e: Exception) {
-            Log.e("TRACE", "Mic unavailable", e)
-            runOnUiThread {
-                binding.statusText.text = "Mic failed: ${e.message}"
-                appendLog(SessionLog.Kind.ERROR, "mic failed: ${e.message}")
-            }
-            return false
-        }
-
-        return try {
-            recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
-            recorder.setOutputFormat(MediaRecorder.OutputFormat.AMR_NB)
-            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
-            recorder.setOutputFile(File(cacheDir, TEMP_AUDIO_FILE).absolutePath)
-            recorder.prepare()
-            recorder.start()
-            mediaRecorder = recorder
-            recorderStarted = true
-            true
-        } catch (e: Exception) {
-            Log.e("TRACE", "Mic failed", e)
-            // Release the half-configured instance: a leaked audio source would make
-            // every later attempt fail too.
-            releaseQuietly(recorder)
-            mediaRecorder = null
-            recorderStarted = false
-            runOnUiThread {
-                binding.statusText.text = "Mic failed: ${e.message}"
-                appendLog(SessionLog.Kind.ERROR, "mic failed: ${e.message}")
-            }
-            false
-        }
-    }
-
-    /** Audio thread only. Returns 0 when the recorder is not in a readable state. */
-    private fun readAmplitude(): Int =
-        try {
-            if (recorderStarted) mediaRecorder?.maxAmplitude ?: 0 else 0
-        } catch (e: IllegalStateException) {
-            // maxAmplitude() is only valid between start() and stop(); a transient
-            // state must never kill the capture loop.
-            Log.w("TRACE", "maxAmplitude unavailable", e)
-            0
-        }
-
-    /**
-     * Stops and releases the recorder. Audio thread only.
-     *
-     * Returns false when the clip could not be closed cleanly — stop() throws if no
-     * frames were captured, in which case the file must not be published as evidence.
-     */
-    private fun stopRecorder(): Boolean {
-        val recorder = mediaRecorder
-        if (recorder == null) {
-            recorderStarted = false
-            return false
-        }
-
-        var closedCleanly = false
-        try {
-            if (recorderStarted) {
-                recorder.stop()
-                closedCleanly = true
-            }
-        } catch (e: Exception) {
-            Log.w("TRACE", "Recorder stop failed", e)
-        } finally {
-            recorderStarted = false
-            releaseQuietly(recorder)
-            mediaRecorder = null
-        }
-        return closedCleanly
-    }
-
-    /** Releases [recorder], logging instead of throwing. */
-    private fun releaseQuietly(recorder: MediaRecorder) {
-        try {
-            recorder.release()
-        } catch (e: Exception) {
-            Log.w("TRACE", "Recorder release failed", e)
-        }
-    }
-
-    private fun newRecorder(): MediaRecorder =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            MediaRecorder(applicationContext)
-        } else {
-            @Suppress("DEPRECATION")
-            MediaRecorder()
-        }
-
-    // ── Motion ────────────────────────────────────────────────────────────
-
-    /**
-     * Registers every listener the armed session selected, and nothing else.
-     *
-     * One call serves both arming a session and returning to the foreground. The
-     * previous re-registration on resume covered only four of the eight listeners,
-     * so a backgrounded session silently lost the barometer, the light sensor, the
-     * step detector and significant motion until it was next armed.
-     *
-     * Absent hardware is skipped by [registerIfAvailable]: a sensor this device does
-     * not have simply never emits, which fusion already treats like a silent one.
-     */
-    private fun registerArmedSensors() {
-        if (!::sensorManager.isInitialized) return
-        val ids = armedSensorIds
-
-        if (SensorRegistry.MOTION.id in ids) {
-            val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-            if (accelerometer == null) {
-                Log.e("TRACE", "No accelerometer on this device")
-            } else {
-                sensorManager.registerListener(
-                    sensorListener, accelerometer, SensorManager.SENSOR_DELAY_GAME
-                )
-            }
-        }
-        if (SensorRegistry.MAGNETOMETER.id in ids) {
-            registerIfAvailable(Sensor.TYPE_MAGNETIC_FIELD, magnetListener, SensorManager.SENSOR_DELAY_GAME)
-        }
-        if (SensorRegistry.BAROMETER.id in ids) {
-            registerIfAvailable(Sensor.TYPE_PRESSURE, baroListener, SensorManager.SENSOR_DELAY_UI)
-        }
-        if (SensorRegistry.LIGHT.id in ids) {
-            registerIfAvailable(Sensor.TYPE_LIGHT, lightListener, SensorManager.SENSOR_DELAY_UI)
-        }
-        if (SensorRegistry.LINEAR.id in ids) {
-            registerIfAvailable(Sensor.TYPE_LINEAR_ACCELERATION, linearListener, SensorManager.SENSOR_DELAY_GAME)
-        }
-        if (SensorRegistry.GYROSCOPE.id in ids) {
-            registerIfAvailable(Sensor.TYPE_GYROSCOPE, gyroListener, SensorManager.SENSOR_DELAY_GAME)
-        }
-        if (SensorRegistry.STEP.id in ids) {
-            registerIfAvailable(Sensor.TYPE_STEP_DETECTOR, stepListener, SensorManager.SENSOR_DELAY_UI)
-        }
-        if (SensorRegistry.SIGMOTION.id in ids) {
-            registerIfAvailable(Sensor.TYPE_SIGNIFICANT_MOTION, sigMotionListener, SensorManager.SENSOR_DELAY_UI)
-        }
-    }
-
-    /** Detaches every listener. Safe to call for sensors that were never registered. */
-    private fun unregisterArmedSensors() {
-        if (!::sensorManager.isInitialized) return
-        sensorManager.unregisterListener(sensorListener)
-        if (::magnetListener.isInitialized) sensorManager.unregisterListener(magnetListener)
-        if (::baroListener.isInitialized) sensorManager.unregisterListener(baroListener)
-        if (::lightListener.isInitialized) sensorManager.unregisterListener(lightListener)
-        if (::linearListener.isInitialized) sensorManager.unregisterListener(linearListener)
-        if (::gyroListener.isInitialized) sensorManager.unregisterListener(gyroListener)
-        if (::stepListener.isInitialized) sensorManager.unregisterListener(stepListener)
-        if (::sigMotionListener.isInitialized) sensorManager.unregisterListener(sigMotionListener)
-    }
-
-    // ── Extended sensor array ───────────────────────────────────────────────
-    //
-    // Every sensor below feeds the same Observation -> EventExtractor ->
-    // FusionEngine -> HashChain pipeline as the original three. Each entry
-    // documents WHAT it contributes to incident reconstruction.
-    //
-
-    /**
-     * MAGNETOMETER — detects steel doors swinging/slamming and large metal
-     * objects (hand trucks, racks, forklift tines) moving near the phone.
-     * Evidence toward: door_swing, door_slam, metal_moves.
-     *
-     * Uses a rolling EWMA baseline (~30 s) because the absolute Earth-field
-     * magnitude varies by hemisphere and building steelwork.
-     */
-    private fun createSensorListeners() {
-        magnetListener = object : SensorEventListener {
-            override fun onSensorChanged(event: SensorEvent) {
-                val magnitude = kotlin.math.sqrt(
-                    event.values[0] * event.values[0] +
-                    event.values[1] * event.values[1] +
-                    event.values[2] * event.values[2]
-                )
-                val deltaUf = baseline.feed("magnetometer", magnitude) // in µT
-                // Normalize: 15 µT delta ≈ door swing nearby, 40+ ≈ big steel moving fast.
-                val confidence = toConfidence(deltaUf, 10f, 40f)
-                if (confidence > 0f) {
-                    onObservation(Observation("magnetometer", confidence, System.currentTimeMillis()))
-                }
-            }
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-        }
-
-        /**
-         * BAROMETER — a door opening/closing couples a fast pressure pulse
-         * into the room. Evidence toward: pressure_shift (context signal).
-         */
-        baroListener = object : SensorEventListener {
-            override fun onSensorChanged(event: SensorEvent) {
-                val hPa = event.values[0]
-                val delta = baseline.feed("barometer", hPa)
-                val confidence = toConfidence(delta, 0.3f, 1.2f)
-                if (confidence > 0f) {
-                    onObservation(Observation("barometer", confidence, System.currentTimeMillis()))
-                }
-            }
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-        }
-
-        /**
-         * AMBIENT LIGHT — a light source being switched off is a fast, large
-         * NEGATIVE lux step. Evidence toward: lights_off (context signal —
-         * never confirms alone; fusion only counts it if another sensor fired).
-         */
-        lightListener = object : SensorEventListener {
-            override fun onSensorChanged(event: SensorEvent) {
-                val lux = event.values[0]
-                val delta = baseline.feed("light", lux)
-                // Negative step only: lights going ON is not an incident.
-                if (lux < baseline.get("light") && delta > 0f) {
-                    val confidence = toConfidence(delta, 100f, 400f)
-                    if (confidence > 0f) {
-                        onObservation(Observation("light", confidence, System.currentTimeMillis()))
-                    }
-                }
-            }
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-        }
-
-        /**
-         * LINEAR ACCELERATION — gravity-compensated motion. In true free-fall
-         * the vector collapses toward 0 m/s²; a phone or object dropping near
-         * the device produces exactly this signature. Evidence toward:
-         * object_falls (free-fall), device_falls.
-         */
-        linearListener = object : SensorEventListener {
-            override fun onSensorChanged(event: SensorEvent) {
-                val magnitude = kotlin.math.sqrt(
-                    event.values[0] * event.values[0] +
-                    event.values[1] * event.values[1] +
-                    event.values[2] * event.values[2]
-                )
-                // Free-fall: magnitude → 0. Confidence rises as it collapses below 1 m/s².
-                val confidence = if (magnitude < 2.5f) toConfidence(2.5f - magnitude, 0f, 2.5f) else 0f
-                if (confidence > 0f) {
-                    onObservation(Observation("linear", confidence, System.currentTimeMillis()))
-                }
-            }
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-        }
-
-        /**
-         * GYROSCOPE — angular velocity. A device tumbling off a shelf spins
-         * fast on multiple axes; a nudge produces a brief single-axis spike.
-         * Evidence toward: device_falls, device_motion.
-         */
-        gyroListener = object : SensorEventListener {
-            override fun onSensorChanged(event: SensorEvent) {
-                val magnitude = kotlin.math.sqrt(
-                    event.values[0] * event.values[0] +
-                    event.values[1] * event.values[1] +
-                    event.values[2] * event.values[2]
-                )
-                val confidence = toConfidence(magnitude, 1.5f, 8f)
-                if (confidence > 0f) {
-                    onObservation(Observation("gyroscope", confidence, System.currentTimeMillis()))
-                }
-            }
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-        }
-
-        /**
-         * STEP DETECTOR — fires once per footstep. Evidence toward:
-         * person_present (weak context signal; useful in reconstruction
-         * queries like "what happened before the alarm" — footsteps
-         * immediately before an event imply a person was involved).
-         */
-        stepListener = object : SensorEventListener {
-            override fun onSensorChanged(event: SensorEvent) {
-                onObservation(Observation("step", 0.5f, System.currentTimeMillis()))
-            }
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-        }
-
-        /**
-         * SIGNIFICANT MOTION — hardware batched trigger for "device was moved
-         * in a notable way". Evidence toward: person_present. One-shot per
-         * trigger; re-armed after each firing.
-         *
-         * A field rather than a local, so [registerArmedSensors] can re-attach it on
-         * resume like every other listener.
-         */
-        sigMotionListener = object : SensorEventListener {
-            override fun onSensorChanged(event: SensorEvent) {
-                sigMotionTriggeredAt = System.currentTimeMillis()
-                onObservation(Observation("sigmotion", 0.5f, sigMotionTriggeredAt))
-            }
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-        }
-    }
-
-    private fun registerIfAvailable(type: Int, listener: SensorEventListener, rate: Int) {
-        val sensor = sensorManager.getDefaultSensor(type) ?: return
-        sensorManager.registerListener(listener, sensor, rate)
-    }
-
-    // ── Confidence mapping ────────────────────────────────────────────────
-
-    /** Maps a raw [value] to 0.0-1.0, returning 0 if below [threshold]. */
-    private fun toConfidence(value: Float, threshold: Float, max: Float): Float {
-        if (value < threshold) return 0f
-        return ((value - threshold) / (max - threshold)).coerceIn(0f, 1f)
-    }
-
-    // ── Observation -> Event -> Storage pipeline ──────────────────────────
-
-    private fun onObservation(obs: Observation) {
-        // Nothing is recorded outside a session the operator armed. Capture is
-        // stopped in that state anyway; this is the second line of defence, because
-        // a listener callback already in flight must not be able to open a session
-        // behind the operator's back.
-        val session = activeSession ?: return
-
-        // Feature C: if evidence is locked, silently drop new observations
-        if (evidenceLocked.get()) return
-
-        val eventType = EventExtractor.extract(obs) ?: return
-
-        // Cooldown gate: same event type fires at most once per second.
-        val lastTime = lastEventTime[eventType] ?: 0L
-        if (obs.timestamp - lastTime < EVENT_COOLDOWN_MS) return
-        lastEventTime[eventType] = obs.timestamp
-
-        val baseEvent = Event(
-            type      = eventType,
-            timestamp = obs.timestamp,
-            source    = obs.source,
-            confidence = obs.confidence
-        )
-
-        appScope.launch {
-            val windowStart = obs.timestamp - FusionEngine.FUSION_WINDOW_MS
-            val windowEnd   = obs.timestamp + FusionEngine.FUSION_WINDOW_MS
-
-            // Steps 0-5: insert, fuse and hash. ChainWriter serialises the whole
-            // read-tip → insert → hash → update sequence, so two sensors firing in
-            // the same millisecond queue up instead of forking the chain.
-            val finalEvent = ChainWriter.append(database.eventDao(), session, baseEvent) { inserted ->
-                FusionEngine.buildEnrichedEvent(
-                    inserted,
-                    database.eventDao().getEventsInWindowForSession(session.id, windowStart, windowEnd)
-                )
-            }
-            val newId = finalEvent.id
-
-            Log.d("TRACE", "EVENT SAVED: id=$newId type=$eventType status=${finalEvent.status}")
-
-            // Update the phone screen counter + last event banner immediately
-            runOnUiThread {
-                eventCount++
-                appendLog(
-                    SessionLog.Kind.EVENT,
-                    "${SensorRegistry.iconFor(obs.source)} ${eventType.replace("_", " ")}" +
-                        " · ${SensorRegistry.labelFor(obs.source)} · ${finalEvent.status}",
-                    finalEvent.timestamp
-                )
-                updateStatusBar(
-                    lastEventType = eventType.replace("_", " "),
-                    lastStatus    = finalEvent.status
-                )
-                // Feature A: update live sensor confidence HUD
-                updateLiveHud(obs.source, obs.confidence)
-            }
-
-            // Feature B: fire a push notification when multi-sensor fusion CONFIRMS an incident
-            if (finalEvent.status == "CONFIRMED") {
-                fireConfirmedNotification(eventType, finalEvent.cameraConfidence,
-                    finalEvent.audioConfidence, finalEvent.motionConfidence)
-            }
-
-            // Step 6: save a copy of the current audio clip as evidence (best-effort)
-            val clipPath = saveEvidenceClip(newId)
-            if (clipPath != null) {
-                database.eventDao().updateClipPath(newId, clipPath)
-            }
-
-            // Step 6b: freeze one camera frame as still-image evidence (best-effort;
-            // audio and image fail independently, and neither blocks the other)
-            if (finalEvent.status == "CONFIRMED") {
-                runOnUiThread { showConfirmedBanner(eventType, finalEvent.confidence) }
-            }
-            takeEventSnapshot(newId)
-
-            // Step 7: retroactively update the status of all events in the window
-            // so that a motion event recorded 1 s ago gets promoted to CONFIRMED when
-            // an audio event fires now.
-            val updatedWindow = database.eventDao()
-                .getEventsInWindowForSession(session.id, windowStart, windowEnd)
-            val fusedStatus   = FusionEngine.determineStatus(updatedWindow)
-            updatedWindow.forEach { e ->
-                // A human assertion is not a fusion verdict: leave MANUAL alone.
-                if (!FusionEngine.isHumanAsserted(e) && e.status != fusedStatus) {
-                    database.eventDao().updateStatus(e.id, fusedStatus)
-                }
-            }
-        }
-    }
-
-    /**
-     * Freezes the audio currently in the recorder's buffer as an evidence clip.
-     *
-     * Strategy: stop the live recorder → copy the finalised file → start a fresh
-     * recorder. This guarantees MediaPlayer can decode the copy without a
-     * missing/truncated AMR header.
-     *
-     * Runs on [audioDispatcher], so it can never interleave with the amplitude loop
-     * or with another clip save — the stop-and-copy step that used to race is now
-     * serialised by thread ownership rather than by hope.
-     *
-     * @return the clip path, or null when no usable clip could be produced.
-     */
-    private suspend fun saveEvidenceClip(eventId: Long): String? = withContext(audioDispatcher) {
-        // A teardown may have run while this save was queued.
-        if (audioTornDown) return@withContext null
-
-        val source = File(cacheDir, TEMP_AUDIO_FILE)
-        if (!recorderStarted || !source.exists() || source.length() == 0L) return@withContext null
-
-        if (!stopRecorder()) {
-            // The clip could not be closed cleanly (stop() throws when almost no
-            // frames were captured). Do not publish a truncated file as evidence.
-            openRecorder()
-            return@withContext null
-        }
-
-        try {
-            val destDir = File(getExternalFilesDir(null), EVIDENCE_DIR).also { it.mkdirs() }
-            val dest = File(destDir, "evidence_$eventId$EVIDENCE_EXT")
-            source.copyTo(dest, overwrite = true)
-            dest.absolutePath
-        } catch (e: Exception) {
-            Log.e("TRACE", "Evidence clip save failed", e)
-            null
-        } finally {
-            // Always get back to recording: a missing clip must never stop capture.
-            openRecorder()
-        }
-    }
-
-    // ── Snapshot evidence ───────────────────────────────────────────────
-
-    /**
-     * Freezes one camera frame as still-image evidence for [eventId].
-     *
-     * Best-effort by design: an event with no photo is still a complete chain
-     * record, and a failed snapshot must never fail the event. One capture at a
-     * time — requests that arrive while a save is running are dropped, because a
-     * queued still from an event seconds past would attach the wrong moment.
-     */
-    private fun takeEventSnapshot(eventId: Long) {
-        val capture = imageCapture
-        if (capture == null) {
-            appendLog(SessionLog.Kind.INFO, "no snapshot — camera not capturing in this session")
-            return
-        }
-        if (capturePending) return   // the wrong-moment guard, not an error
-        capturePending = true
-
-        val dest = File(File(getExternalFilesDir(null), EVIDENCE_DIR).apply { mkdirs() },
-            "photo_$eventId.jpg")
-        val opts = ImageCapture.OutputFileOptions.Builder(dest).build()
-
-        capture.takePicture(
-            opts,
-            ContextCompat.getMainExecutor(this),
-            object : ImageCapture.OnImageSavedCallback {
-                override fun onImageSaved(result: ImageCapture.OutputFileResults) {
-                    capturePending = false
-                    val path = result.savedUri?.path ?: dest.absolutePath
-                    appScope.launch {
-                        database.eventDao().updatePhotoPath(eventId, path)
-                        Log.d("TRACE", "Snapshot saved for event $eventId: $path")
-                    }
-                }
-
-                override fun onError(exc: ImageCaptureException) {
-                    capturePending = false
-                    Log.w("TRACE", "Snapshot failed for event $eventId", exc)
-                    appendLog(SessionLog.Kind.INFO, "snapshot failed: ${exc.message}")
-                    // A half-written file must never be discoverable as evidence.
-                    dest.delete()
-                }
-            }
-        )
-    }
-
-    /**
-     * Shows the CONFIRMED banner. Main thread only.
-     *
-     * The live view's in-app cue for the moment fusion agrees: the status chip
-     * keeps ticking, the log records the event, but neither interrupts the way
-     * a green banner does. TRACE stays silent — no sound, no vibration.
-     */
-    private fun showConfirmedBanner(eventType: String, confidence: Float) {
-        binding.confirmedBanner.visibility = View.VISIBLE
-        binding.tvConfirmedText.text =
-            "CONFIRMED · ${eventType.replace("_", " ").replaceFirstChar { it.uppercase() }}" +
-                " · ${"%.0f".format(confidence * 100)}%"
-        bannerHide?.cancel()
-        bannerHide = uiScope.launch {
-            delay(BANNER_VISIBLE_MS)
-            binding.confirmedBanner.visibility = View.GONE
-        }
-    }
-
-    // ── Feature A: Live Sensor Confidence HUD ────────────────────────────
-
-    /** Updates the coloured confidence readouts on the main HUD. Must be called on UI thread. */
-    private fun updateLiveHud(source: String, confidence: Float) {
-        val pct = "${"%.0f".format(confidence * 100)}%"
-        when (source) {
-            "camera" -> binding.tvCameraLive.text = "📷 $pct"
-            "audio"  -> binding.tvAudioLive.text  = "🔊 $pct"
-            "motion" -> binding.tvMotionLive.text  = "📳 $pct"
-        }
-    }
-
-    // ── Feature B: CONFIRMED Push Notification ────────────────────────────
 
     // ── Manual incident tagging ───────────────────────────────────────────
 
@@ -1681,53 +829,18 @@ class MainActivity : AppCompatActivity() {
             val stored = ChainWriter.append(database.eventDao(), session, tag)
             Log.i("TRACE", "MANUAL TAG: id=${stored.id} type=$type session=${session.id}")
 
-            // Keep the audio around this moment as an evidence clip (serialised on
-            // the audio thread) and freeze one camera frame beside it.
-            val clipPath = saveEvidenceClip(stored.id)
-            if (clipPath != null) {
-                database.eventDao().updateClipPath(stored.id, clipPath)
-            }
-            takeEventSnapshot(stored.id)
+            // The service owns the recorder and the camera — ask it to freeze
+            // clip + photo around this moment.
+            CaptureService.captureForEvent(this@MainActivity, stored.id)
 
             runOnUiThread {
-                eventCount++
+                LiveBus.eventCount += 1
+                eventCount = LiveBus.eventCount
                 appendLog(SessionLog.Kind.TAG, "✋ tagged: $title", stored.timestamp)
                 updateStatusBar(lastEventType = title, lastStatus = "MANUAL")
                 Toast.makeText(this@MainActivity, "Tagged: $title", Toast.LENGTH_SHORT).show()
             }
         }
-    }
-
-    /**
-     * Fires a silent notification when multi-sensor fusion confirms an incident.
-     * No sound and no vibration by design — the on-screen status line is the
-     * in-app cue at this stage (a confirm banner lands in Stage 3).
-     */
-    private fun fireConfirmedNotification(
-        eventType: String,
-        camConf: Float?,
-        audioConf: Float?,
-        motionConf: Float?
-    ) {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-            != PackageManager.PERMISSION_GRANTED) return
-
-        val title = "CONFIRMED: ${eventType.replace("_", " ").replaceFirstChar { it.uppercase() }}"
-        val body  = buildString {
-            if (camConf    != null) append("📷 ${"%.0f".format(camConf    * 100)}%  ")
-            if (audioConf  != null) append("🔊 ${"%.0f".format(audioConf  * 100)}%  ")
-            if (motionConf != null) append("📳 ${"%.0f".format(motionConf * 100)}%")
-        }.trim().ifEmpty { "Multi-sensor agreement detected" }
-
-        val notification = NotificationCompat.Builder(this, NOTIF_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_alert)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setAutoCancel(true)
-            .build()
-
-        getSystemService(NotificationManager::class.java).notify(notifId++, notification)
     }
 }
 

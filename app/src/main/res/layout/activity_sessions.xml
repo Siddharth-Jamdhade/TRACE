@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="?attr/colorSurface">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorSurfaceVariant"
+        app:titleTextColor="?attr/colorPrimary"
+        app:navigationIconTint="?attr/colorPrimary" />
+
+    <TextView
+        android:id="@+id/tvEmpty"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:visibility="gone"
+        android:textColor="?attr/colorOnSurfaceVariant"
+        android:textSize="14sp"
+        android:lineSpacingExtra="4dp"
+        android:text="No sessions yet.\n\nArm a recording from the dashboard —\nevery session you record will appear here." />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerSessions"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipToPadding="false"
+        android:paddingBottom="8dp" />
+
+</LinearLayout>

@@ -60,7 +60,7 @@ class EventDetailActivity : AppCompatActivity() {
         val eventId = intent.getLongExtra("eventId", -1L)
         if (eventId == -1L) { finish(); return }
 
-        loadEvent(eventId)
+        loadEvent(eventId)   // binding.btnViewPhoto is wired after loading, below
 
         binding.btnConfirm.setOnClickListener { updateStatus("CONFIRMED") }
         binding.btnReject.setOnClickListener  { updateStatus("REJECTED")  }
@@ -84,15 +84,27 @@ class EventDetailActivity : AppCompatActivity() {
                 database.eventDao().getEventsForSession(e.sessionId)
             )
 
+            // Stage 7: verify the evidence FILES against their write-time
+            // hashes. Done here in the IO coroutine — hashing a 3 MP snapshot
+            // on the main thread would jank the screen.
+            val clipOk  = e.evidenceClipPath?.let { FileIntegrity.matches(File(it), e.clipHash) }
+            val photoOk = e.evidencePhotoPath?.let { FileIntegrity.matches(File(it), e.photoHash) }
+
             withContext(Dispatchers.Main) {
-                renderEvent(e, singleValid, chainValid)
+                renderEvent(e, singleValid, chainValid, clipOk, photoOk)
             }
         }
     }
 
     // ------ Rendering ---------------------------------------------------
 
-    private fun renderEvent(e: Event, singleValid: Boolean, chainValid: Boolean) {
+    private fun renderEvent(
+        e: Event,
+        singleValid: Boolean,
+        chainValid: Boolean,
+        clipOk: Boolean?,
+        photoOk: Boolean?
+    ) {
         // Status banner
         // Fixed semantic colours, deliberately not theme attributes: a CONFIRMED
         // incident has to stay green whatever wallpaper palette is active.
@@ -150,10 +162,19 @@ class EventDetailActivity : AppCompatActivity() {
         // Explanation text
         binding.tvExplanation.text = QueryEngine.explainConfidence(e)
 
-        // Evidence clip
+        // Evidence clip — with Stage 7 file-integrity verdict
         val clip = e.evidenceClipPath
         if (!clip.isNullOrEmpty() && File(clip).exists()) {
-            binding.tvEvidenceStatus.text = "Audio evidence clip available."
+            binding.tvEvidenceStatus.text = when {
+                e.clipHash == null      -> "Audio evidence clip available.\nNo integrity hash stored (recorded before hashing was added)."
+                clipOk == true          -> "Audio evidence clip available.\nFile integrity verified against its stored SHA-256."
+                else                    -> {
+                    binding.tvEvidenceStatus.setTextColor(
+                        ContextCompat.getColor(this, R.color.trace_integrity_broken)
+                    )
+                    "Audio evidence clip available.\n⚠ HASH MISMATCH — the clip file may have been replaced or altered."
+                }
+            }
             binding.btnPlayEvidence.visibility = View.VISIBLE
         } else {
             binding.tvEvidenceStatus.text = "No evidence clip saved for this event."
@@ -165,7 +186,16 @@ class EventDetailActivity : AppCompatActivity() {
         // gone — an investigator must never be offered a button that cannot work.
         val photo = e.evidencePhotoPath
         if (!photo.isNullOrEmpty() && File(photo).exists()) {
-            binding.tvPhotoStatus.text = "Camera snapshot available."
+            binding.tvPhotoStatus.text = when {
+                e.photoHash == null     -> "Camera snapshot available.\nNo integrity hash stored (recorded before hashing was added)."
+                photoOk == true         -> "Camera snapshot available.\nFile integrity verified against its stored SHA-256."
+                else                    -> {
+                    binding.tvPhotoStatus.setTextColor(
+                        ContextCompat.getColor(this, R.color.trace_integrity_broken)
+                    )
+                    "Camera snapshot available.\n⚠ HASH MISMATCH — the image file may have been replaced or altered."
+                }
+            }
             binding.btnViewPhoto.visibility = View.VISIBLE
         } else {
             binding.tvPhotoStatus.text =
@@ -202,8 +232,10 @@ class EventDetailActivity : AppCompatActivity() {
             database.eventDao().updateStatus(e.id, newStatus)
             val updated = e.copy(status = newStatus)
             currentEvent = updated
+            val clipOk  = updated.evidenceClipPath?.let { FileIntegrity.matches(File(it), updated.clipHash) }
+            val photoOk = updated.evidencePhotoPath?.let { FileIntegrity.matches(File(it), updated.photoHash) }
             withContext(Dispatchers.Main) {
-                renderEvent(updated, HashChain.verifySingle(updated), true)
+                renderEvent(updated, HashChain.verifySingle(updated), true, clipOk, photoOk)
                 Toast.makeText(
                     this@EventDetailActivity,
                     "Status set to $newStatus",

@@ -62,6 +62,13 @@ data class Event(
      */
     val evidencePhotoPath: String? = null,
 
+    // --- Evidence file integrity (Stage 7) ---------------------------------
+    /** SHA-256 of the audio clip file at the moment it was written. */
+    val clipHash: String? = null,
+
+    /** SHA-256 of the snapshot file at the moment it was written. */
+    val photoHash: String? = null,
+
     // --- SHA-256 hash chain fields ---------------------------------------
     /** SHA-256 hash of this event chained to [previousHash]. */
     val hash: String? = null,

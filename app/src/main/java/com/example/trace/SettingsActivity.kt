@@ -1,5 +1,6 @@
 package com.example.trace
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.MenuItem
 import androidx.appcompat.app.AppCompatActivity
@@ -32,6 +33,10 @@ class SettingsActivity : AppCompatActivity() {
             // Dynamic colour is applied as each activity is created, so a palette
             // change only becomes visible after a re-create.
             recreate()
+        }
+
+        binding.rowCloudAi.setOnClickListener {
+            startActivity(Intent(this, CloudAiSettingsActivity::class.java))
         }
     }
 

@@ -25,4 +25,12 @@ interface SessionDao {
     /** Sessions currently in [state] — used to recover sessions left open by a crash. */
     @Query("SELECT * FROM sessions WHERE state = :state ORDER BY startedAt DESC")
     suspend fun getSessionsByState(state: String): List<Session>
+
+    /** Every session, newest first — used by the whole-timeline AI chat. */
+    @Query("SELECT * FROM sessions ORDER BY startedAt DESC")
+    suspend fun getAllSessions(): List<Session>
+
+    /** Removes the session row. Its events are deleted separately, first. */
+    @Query("DELETE FROM sessions WHERE id = :sessionId")
+    suspend fun deleteSession(sessionId: Long)
 }

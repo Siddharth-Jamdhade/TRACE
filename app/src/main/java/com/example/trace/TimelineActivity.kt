@@ -71,6 +71,11 @@ class TimelineActivity : AppCompatActivity() {
 
         binding.btnAsk.setOnClickListener { runQuery() }
 
+        // Cloud AI chat over every recorded session (configured in Settings).
+        binding.btnAskAi.setOnClickListener {
+            startActivity(ChatActivity.intentForAllSessions(this))
+        }
+
         binding.queryInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_DONE) { runQuery(); true } else false
         }
@@ -162,7 +167,9 @@ class TimelineActivity : AppCompatActivity() {
                         put("motion_confidence", e.motionConfidence?.let { "%.2f".format(it) } ?: "null")
                         put("sensor_breakdown",   e.sensorBreakdown ?: "none")
                         put("evidence_clip",    e.evidenceClipPath ?: "none")
+                        put("clip_hash",        e.clipHash ?: "none")
                         put("evidence_photo",   e.evidencePhotoPath ?: "none")
+                        put("photo_hash",       e.photoHash ?: "none")
                         put("hash",             e.hash ?: "none")
                         put("previous_hash",    e.previousHash ?: "none")
                     }

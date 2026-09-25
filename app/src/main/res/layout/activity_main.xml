@@ -330,6 +330,9 @@
                 android:textSize="13sp"
                 android:backgroundTint="?attr/colorPrimary" />
 
+            <!-- Analyse Video is hidden from the UI (feature deferred); the
+                 activity and its code are kept and can be re-shown by setting
+                 this visibility back to visible. -->
             <Button
                 android:id="@+id/btnAnalyseVideo"
                 android:layout_width="0dp"
@@ -339,7 +342,8 @@
                 android:text="Analyse Video"
                 android:textColor="?attr/colorPrimary"
                 android:textSize="13sp"
-                android:backgroundTint="@color/trace_surface_elevated" />
+                android:backgroundTint="@color/trace_surface_elevated"
+                android:visibility="gone" />
 
         </LinearLayout>
     </LinearLayout>

@@ -78,6 +78,14 @@ interface EventDao {
     @Query("UPDATE events SET evidencePhotoPath = :path WHERE id = :eventId")
     suspend fun updatePhotoPath(eventId: Long, path: String)
 
+    /** Stores the audio clip's SHA-256, computed at write time. */
+    @Query("UPDATE events SET clipHash = :hash WHERE id = :eventId")
+    suspend fun updateClipHash(eventId: Long, hash: String)
+
+    /** Stores the snapshot's SHA-256, computed at write time. */
+    @Query("UPDATE events SET photoHash = :hash WHERE id = :eventId")
+    suspend fun updatePhotoHash(eventId: Long, hash: String)
+
     @Query("SELECT * FROM events WHERE timestamp >= :sinceTimestamp ORDER BY timestamp ASC")
     suspend fun getRecentEvents(sinceTimestamp: Long): List<Event>
 
@@ -96,4 +104,12 @@ interface EventDao {
 
     @Query("DELETE FROM events")
     suspend fun clearAll()
+
+    /**
+     * Deletes every event of one session — per-session deletion only ever
+     * happens behind an explicit confirmation, and the files on disk are
+     * removed by [EvidenceFiles] alongside it.
+     */
+    @Query("DELETE FROM events WHERE sessionId = :sessionId")
+    suspend fun deleteEventsForSession(sessionId: Long)
 }

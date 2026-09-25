@@ -43,6 +43,14 @@ internal class FakeEventDao : EventDao {
         rows.firstOrNull { it.id == eventId }?.let { update(it.copy(evidencePhotoPath = path)) }
     }
 
+    override suspend fun updateClipHash(eventId: Long, hash: String) {
+        rows.firstOrNull { it.id == eventId }?.let { update(it.copy(clipHash = hash)) }
+    }
+
+    override suspend fun updatePhotoHash(eventId: Long, hash: String) {
+        rows.firstOrNull { it.id == eventId }?.let { update(it.copy(photoHash = hash)) }
+    }
+
     override suspend fun getRecentEvents(sinceTimestamp: Long): List<Event> =
         rows.filter { it.timestamp >= sinceTimestamp }.sortedBy { it.timestamp }
 
@@ -78,6 +86,10 @@ internal class FakeEventDao : EventDao {
     override suspend fun clearAll() {
         rows.clear()
     }
+
+    override suspend fun deleteEventsForSession(sessionId: Long) {
+        rows.removeAll { it.sessionId == sessionId }
+    }
 }
 
 /** In-memory [SessionDao]. Ids are assigned the way AUTOINCREMENT assigns them. */
@@ -102,6 +114,13 @@ internal class FakeSessionDao : SessionDao {
 
     override suspend fun getSessionsByState(state: String): List<Session> =
         rows.filter { it.state == state }.sortedByDescending { it.startedAt }
+
+    override suspend fun getAllSessions(): List<Session> =
+        rows.sortedByDescending { it.startedAt }
+
+    override suspend fun deleteSession(sessionId: Long) {
+        rows.removeAll { it.id == sessionId }
+    }
 
     /** Test-only helper: everything stored so far. */
     fun all(): List<Session> = rows.toList()

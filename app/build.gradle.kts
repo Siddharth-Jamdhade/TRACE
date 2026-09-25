@@ -53,6 +53,9 @@ dependencies {
     // RecyclerView (for the Timeline screen)
     implementation("androidx.recyclerview:recyclerview:1.3.2")
 
+    // EncryptedSharedPreferences for Cloud AI API keys (key held in Android Keystore)
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
     // Camera
     implementation("androidx.camera:camera-core:1.3.4")
     implementation("androidx.camera:camera-camera2:1.3.4")

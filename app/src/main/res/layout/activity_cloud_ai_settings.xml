@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="?attr/colorSurface">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorSurfaceVariant"
+        app:titleTextColor="?attr/colorPrimary"
+        app:navigationIconTint="?attr/colorPrimary" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="PROVIDER"
+                android:textColor="?attr/colorPrimary"
+                android:textSize="10sp"
+                android:letterSpacing="0.15"
+                android:fontFamily="monospace"
+                android:paddingBottom="8dp" />
+
+            <RadioGroup
+                android:id="@+id/providerGroup"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <RadioButton
+                    android:id="@+id/radioGroq"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="8dp"
+                    android:minHeight="44dp"
+                    android:text="Groq"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textSize="15sp" />
+
+                <RadioButton
+                    android:id="@+id/radioGoogle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="8dp"
+                    android:minHeight="44dp"
+                    android:text="Google AI Studio"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textSize="15sp" />
+
+                <RadioButton
+                    android:id="@+id/radioOpenrouter"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="8dp"
+                    android:minHeight="44dp"
+                    android:text="OpenRouter"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textSize="15sp" />
+
+            </RadioGroup>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="12sp"
+                android:lineSpacingExtra="3dp"
+                android:text="All three are cloud services. Your session data (event log, times, labels, statuses — no audio, no photos) is sent to the provider you pick, using the key below. The key is stored encrypted on this device and is used only for these requests." />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="API KEY"
+                android:textColor="?attr/colorPrimary"
+                android:textSize="10sp"
+                android:letterSpacing="0.15"
+                android:fontFamily="monospace"
+                android:paddingBottom="8dp" />
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:endIconMode="password_toggle">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/inputApiKey"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Paste your key"
+                    android:inputType="textPassword"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textSize="14sp" />
+
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="MODEL"
+                android:textColor="?attr/colorPrimary"
+                android:textSize="10sp"
+                android:letterSpacing="0.15"
+                android:fontFamily="monospace"
+                android:paddingBottom="8dp" />
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/inputModel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="e.g. llama-3.1-8b-instant"
+                    android:inputType="text"
+                    android:singleLine="true"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textSize="14sp" />
+
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="12sp"
+                android:text="Type the model name exactly as the provider expects it (this is their identifier, not ours)." />
+
+            <TextView
+                android:id="@+id/tvStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="12sp"
+                android:fontFamily="monospace" />
+
+            <Button
+                android:id="@+id/btnSave"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="16dp"
+                android:text="SAVE"
+                android:textColor="?attr/colorOnPrimary"
+                android:textStyle="bold"
+                android:backgroundTint="?attr/colorPrimary" />
+
+            <Button
+                android:id="@+id/btnClear"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="8dp"
+                android:text="CLEAR SAVED CONFIG"
+                android:textColor="@color/trace_status_rejected"
+                android:backgroundTint="@color/trace_surface_elevated" />
+
+        </LinearLayout>
+
+    </ScrollView>
+
+</LinearLayout>

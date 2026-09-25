@@ -18,3 +18,12 @@ local.properties
 *.keystore
 *.log
 .cxx/
+
+# Verification session artifacts (device pulls, screenshots, UI dumps)
+/shots/
+/device_db/
+/ui_dump.xml
+
+# Exported evidence JSON from testing
+session_*_events.json
+events.json

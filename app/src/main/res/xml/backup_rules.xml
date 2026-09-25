@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Sample backup rules file; uncomment and customize as necessary.
-   See https://developer.android.com/guide/topics/data/autobackup
-   for details.
-   Note: This file is ignored for devices older than API 31
-   See https://developer.android.com/about/versions/12/backup-restore
+  Backup rules (Android 11 and below).
+
+  allowBackup="false" is the primary control: evidence must not leave the
+  device through Google's cloud backup, because a hash chain verified on the
+  device means nothing about a copy restored elsewhere. This file is the
+  explicit, auditable statement of the same policy for the pre-12 framework.
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <include domain="sharedpref" path="trace_cloud_ai.xml" />
+    <exclude domain="file" path="TRACE/" />
+    <exclude domain="database" path="." />
+    <exclude domain="sharedpref" path="trace_prefs.xml" />
 </full-backup-content>

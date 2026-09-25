@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="?attr/colorSurface">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorSurfaceVariant"
+        app:titleTextColor="?attr/colorPrimary"
+        app:navigationIconTint="?attr/colorPrimary" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- Session header: who/what/when + aggregates, same rendering as the AI digest -->
+            <TextView
+                android:id="@+id/tvHeader"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="13sp"
+                android:fontFamily="monospace"
+                android:lineSpacingExtra="3dp" />
+
+            <!-- Chain + header verification verdict -->
+            <TextView
+                android:id="@+id/tvIntegrity"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+        </LinearLayout>
+
+    </ScrollView>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="16dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="6dp"
+        android:text="EVENTS"
+        android:textColor="?attr/colorPrimary"
+        android:textSize="10sp"
+        android:letterSpacing="0.15"
+        android:fontFamily="monospace" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerEvents"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:paddingBottom="8dp" />
+
+    <Button
+        android:id="@+id/btnChat"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="12dp"
+        android:text="ASK AI ABOUT THIS SESSION"
+        android:textColor="?attr/colorOnPrimary"
+        android:textStyle="bold"
+        android:backgroundTint="?attr/colorPrimary" />
+
+</LinearLayout>
