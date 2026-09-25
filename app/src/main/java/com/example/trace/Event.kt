@@ -21,7 +21,7 @@ data class Event(
     /** System.currentTimeMillis() at detection time. */
     val timestamp: Long,
 
-    /** Primary triggering sensor: "camera", "audio", or "motion". */
+    /** Primary triggering sensor: see [SensorRegistry] for all IDs. */
     val source: String,
 
     /** Normalized confidence of the primary triggering sensor (0.0–1.0). */
@@ -35,8 +35,11 @@ data class Event(
     val audioConfidence: Float? = null,
     val motionConfidence: Float? = null,
 
+    /** |-separated "sensor:0.xx" pairs for extra sensors present in the window (see FusionEngine). */
+    val sensorBreakdown: String? = null,
+
     // --- Evidence clip path (filled after saving audio evidence) ---------
-    /** Absolute path to the saved 3gp audio clip, or null if not available. */
+    /** Absolute path to the saved amr audio clip, or null if not available. */
     val evidenceClipPath: String? = null,
 
     // --- SHA-256 hash chain fields ---------------------------------------

@@ -43,6 +43,29 @@ TRACE simultaneously **watches** (Camera), **listens** (Microphone), and **feels
 | 🔊 **Microphone Sound Detection** | Amplitude polling every 150ms detects alarms and abnormal sounds |
 | 📳 **Accelerometer Impact Detection** | Jerk-based motion analysis catches physical impacts invisible to the camera |
 
+### Extended Sensor Array (v2.1)
+Every sensor below feeds the same Observation → EventExtractor → FusionEngine → HashChain pipeline. Each is documented in `SensorRegistry.kt` with its reconstruction role.
+
+| Sensor | Signal it contributes | Evidence toward |
+|--------|----------------------|-----------------|
+| 🧲 **Magnetometer** | Deviation from a rolling ~30 s baseline of ambient magnetic field — steel doors and large metal objects distort the local field | `door_swing`, `door_slam`, `metal_moves` |
+| 🌀 **Barometer** | Fast air-pressure pulses (>0.3 hPa) from doors opening/closing — HVAC drifts too slowly to trigger | `pressure_shift` (context) |
+| 💡 **Ambient Light** | Large *negative* lux step against baseline — a light source being switched off | `lights_off` (context) |
+| 🪂 **Linear Acceleration** | Gravity-compensated vector collapsing toward 0 m/s² — the free-fall signature of anything dropping near the phone | `object_falls`, `device_falls` |
+| 🔄 **Gyroscope** | Angular velocity — a device tumbling off a shelf spins on multiple axes | `device_falls`, `device_motion` |
+| 👣 **Step Detector** | One signal per footstep — implies a person near the phone | `person_present` (context) |
+| 🚶 **Significant Motion** | Hardware activity trigger — device was moved in a notable way | `person_present` (context) |
+| 📳 **Vibration motor** | *Actuator, not a sensor:* haptic pulse when an incident is CONFIRMED | feedback only |
+
+**Context signals** (`pressure_shift`, `lights_off`, `person_present`) rarely reach the >60% confidence needed to count toward CONFIRMED on their own — they enrich the reconstruction timeline (e.g. footsteps + lights-off + alarm tells a story) rather than drive verdicts.
+
+**Deliberately excluded** (no meaningful contribution to physical incident reconstruction):
+- **Ambient temperature / humidity** — absent on modern phones; air state doesn't distinguish incident signatures.
+- **Rotation vector / orientation / gravity (raw)** — redundant; dynamics are captured by gyroscope + linear acceleration.
+- **Wi-Fi / Bluetooth RSSI** — seconds-scale scans, poor spatial resolution, heavy permissions, near-zero demo value.
+- **Proximity** — 5 cm range, designed for screen-off during calls, not incident detection.
+- **GPS** — coarse, battery-hungry, and location is not part of the physical-incident signature. |
+
 ### Intelligence
 | Feature | Description |
 |---------|-------------|

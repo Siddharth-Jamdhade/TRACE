@@ -5,9 +5,9 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-// Schema version 2 — added per-sensor confidence columns, evidenceClipPath, hash chain fields.
+// Schema version 3 — added sensorBreakdown column (extended sensor array v2.1).
 // fallbackToDestructiveMigration is used for hackathon speed; add proper migrations before production.
-@Database(entities = [Event::class], version = 2)
+@Database(entities = [Event::class], version = 3)
 abstract class TraceDatabase : RoomDatabase() {
     abstract fun eventDao(): EventDao
 

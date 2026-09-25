@@ -108,6 +108,18 @@ class EventDetailActivity : AppCompatActivity() {
         binding.tvAudioConf.text   = "Audio:   ${"%.0f".format(audioConf  * 100)}%"
         binding.tvMotionConf.text  = "Motion:  ${"%.0f".format(motionConf * 100)}%"
 
+        // Extra sensors recorded in the fusion window (magnetometer, barometer,
+        // light, linear, gyroscope, step, sigmotion) — shown so no evidence is hidden.
+        binding.tvExtraSensors.text = e.sensorBreakdown
+            ?.split("|")
+            ?.filter { it.isNotBlank() }
+            ?.joinToString("\n") { pair ->
+                val sensor = pair.substringBefore(':')
+                val conf   = pair.substringAfter(':').toFloatOrNull() ?: 0f
+                "${SensorRegistry.iconFor(sensor)} ${SensorRegistry.labelFor(sensor)}: ${"%.0f".format(conf * 100)}%"
+            }
+            ?.takeIf { it.isNotEmpty() } ?: "No additional sensor evidence in window."
+
         // Explanation text
         binding.tvExplanation.text = QueryEngine.explainConfidence(e)
 

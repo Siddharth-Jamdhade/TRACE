@@ -156,6 +156,7 @@ class TimelineActivity : AppCompatActivity() {
                         put("camera_confidence", e.cameraConfidence?.let { "%.2f".format(it) } ?: "null")
                         put("audio_confidence",  e.audioConfidence?.let  { "%.2f".format(it) } ?: "null")
                         put("motion_confidence", e.motionConfidence?.let { "%.2f".format(it) } ?: "null")
+                        put("sensor_breakdown",   e.sensorBreakdown ?: "none")
                         put("evidence_clip",    e.evidenceClipPath ?: "none")
                         put("hash",             e.hash ?: "none")
                         put("previous_hash",    e.previousHash ?: "none")

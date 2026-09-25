@@ -14,6 +14,9 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.util.Log
 import android.util.Size
 import android.view.WindowManager
@@ -90,6 +93,16 @@ class MainActivity : AppCompatActivity() {
     private var lastY = Float.NaN
     private var lastZ = Float.NaN
     private var lastMotionJerk = 0f
+
+    // ── Extended sensor array (magnetometer, barometer, light, linear, gyro,
+    //    step, sigmotion). All feed the same Observation pipeline.
+    private val baseline = RollingBaseline()
+    private lateinit var hapticListener: SensorEventListener
+    private lateinit var baroListener: SensorEventListener
+    private lateinit var linearListener: SensorEventListener
+    private lateinit var gyroListener: SensorEventListener
+    private lateinit var stepListener: SensorEventListener
+    private var sigMotionTriggeredAt = 0L
 
     // ── Camera analysis ───────────────────────────────────────────────────
     private var previousFrame: ByteArray? = null
@@ -241,6 +254,8 @@ class MainActivity : AppCompatActivity() {
         startCamera()
         startMicMonitoring()
         startMotionMonitoring()
+        startExtendedSensors()
+        Log.i("TRACE", "Sensor availability:\n${SensorRegistry.availabilityReport(sensorManager)}")
     }
 
     /** Updates the on-screen status bar — this is what judges see on the phone. */
@@ -258,18 +273,39 @@ class MainActivity : AppCompatActivity() {
         // Unregister while screen is off to save battery.
         if (::sensorManager.isInitialized) {
             sensorManager.unregisterListener(sensorListener)
+            unregisterExtendedListeners()
         }
     }
 
     override fun onResume() {
         super.onResume()
         // Re-register when app comes back to foreground.
-        if (::sensorManager.isInitialized) {
+        if (::sensorManager.isInitialized && extendedSensorsStarted) {
             val accel = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
             if (accel != null) {
                 sensorManager.registerListener(sensorListener, accel, SensorManager.SENSOR_DELAY_GAME)
             }
+            if (::hapticListener.isInitialized) {
+                registerIfAvailable(Sensor.TYPE_MAGNETIC_FIELD, hapticListener, SensorManager.SENSOR_DELAY_GAME)
+            }
+            if (::linearListener.isInitialized) {
+                registerIfAvailable(Sensor.TYPE_LINEAR_ACCELERATION, linearListener, SensorManager.SENSOR_DELAY_GAME)
+            }
+            if (::gyroListener.isInitialized) {
+                registerIfAvailable(Sensor.TYPE_GYROSCOPE, gyroListener, SensorManager.SENSOR_DELAY_GAME)
+            }
         }
+    }
+
+    private var extendedSensorsStarted = false
+
+    private fun unregisterExtendedListeners() {
+        if (!extendedSensorsStarted) return
+        if (::hapticListener.isInitialized) sensorManager.unregisterListener(hapticListener)
+        if (::baroListener.isInitialized) sensorManager.unregisterListener(baroListener)
+        if (::linearListener.isInitialized) sensorManager.unregisterListener(linearListener)
+        if (::gyroListener.isInitialized) sensorManager.unregisterListener(gyroListener)
+        if (::stepListener.isInitialized) sensorManager.unregisterListener(stepListener)
     }
 
     override fun onDestroy() {
@@ -419,6 +455,178 @@ class MainActivity : AppCompatActivity() {
         sensorManager.registerListener(sensorListener, accelerometer, SensorManager.SENSOR_DELAY_GAME)
     }
 
+    // ── Extended sensor array ───────────────────────────────────────────────
+    //
+    // Every sensor below feeds the same Observation -> EventExtractor ->
+    // FusionEngine -> HashChain pipeline as the original three. Each entry
+    // documents WHAT it contributes to incident reconstruction.
+    //
+
+    /**
+     * MAGNETOMETER — detects steel doors swinging/slamming and large metal
+     * objects (hand trucks, racks, forklift tines) moving near the phone.
+     * Evidence toward: door_swing, door_slam, metal_moves.
+     *
+     * Uses a rolling EWMA baseline (~30 s) because the absolute Earth-field
+     * magnitude varies by hemisphere and building steelwork.
+     */
+    private fun startExtendedSensors() {
+        extendedSensorsStarted = true
+        hapticListener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                val magnitude = kotlin.math.sqrt(
+                    event.values[0] * event.values[0] +
+                    event.values[1] * event.values[1] +
+                    event.values[2] * event.values[2]
+                )
+                val deltaUf = baseline.feed("magnetometer", magnitude) // in µT
+                // Normalize: 15 µT delta ≈ door swing nearby, 40+ ≈ big steel moving fast.
+                val confidence = toConfidence(deltaUf, 10f, 40f)
+                if (confidence > 0f) {
+                    onObservation(Observation("magnetometer", confidence, System.currentTimeMillis()))
+                }
+            }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+
+        /**
+         * BAROMETER — a door opening/closing couples a fast pressure pulse
+         * into the room. Evidence toward: pressure_shift (context signal).
+         */
+        baroListener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                val hPa = event.values[0]
+                val delta = baseline.feed("barometer", hPa)
+                val confidence = toConfidence(delta, 0.3f, 1.2f)
+                if (confidence > 0f) {
+                    onObservation(Observation("barometer", confidence, System.currentTimeMillis()))
+                }
+            }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+
+        /**
+         * AMBIENT LIGHT — a light source being switched off is a fast, large
+         * NEGATIVE lux step. Evidence toward: lights_off (context signal —
+         * never confirms alone; fusion only counts it if another sensor fired).
+         */
+        val lightListenerOnly = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                val lux = event.values[0]
+                val delta = baseline.feed("light", lux)
+                // Negative step only: lights going ON is not an incident.
+                if (lux < baseline.get("light") && delta > 0f) {
+                    val confidence = toConfidence(delta, 100f, 400f)
+                    if (confidence > 0f) {
+                        onObservation(Observation("light", confidence, System.currentTimeMillis()))
+                    }
+                }
+            }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+
+        /**
+         * LINEAR ACCELERATION — gravity-compensated motion. In true free-fall
+         * the vector collapses toward 0 m/s²; a phone or object dropping near
+         * the device produces exactly this signature. Evidence toward:
+         * object_falls (free-fall), device_falls.
+         */
+        linearListener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                val magnitude = kotlin.math.sqrt(
+                    event.values[0] * event.values[0] +
+                    event.values[1] * event.values[1] +
+                    event.values[2] * event.values[2]
+                )
+                // Free-fall: magnitude → 0. Confidence rises as it collapses below 1 m/s².
+                val confidence = if (magnitude < 2.5f) toConfidence(2.5f - magnitude, 0f, 2.5f) else 0f
+                if (confidence > 0f) {
+                    onObservation(Observation("linear", confidence, System.currentTimeMillis()))
+                }
+            }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+
+        /**
+         * GYROSCOPE — angular velocity. A device tumbling off a shelf spins
+         * fast on multiple axes; a nudge produces a brief single-axis spike.
+         * Evidence toward: device_falls, device_motion.
+         */
+        gyroListener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                val magnitude = kotlin.math.sqrt(
+                    event.values[0] * event.values[0] +
+                    event.values[1] * event.values[1] +
+                    event.values[2] * event.values[2]
+                )
+                val confidence = toConfidence(magnitude, 1.5f, 8f)
+                if (confidence > 0f) {
+                    onObservation(Observation("gyroscope", confidence, System.currentTimeMillis()))
+                }
+            }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+
+        /**
+         * STEP DETECTOR — fires once per footstep. Evidence toward:
+         * person_present (weak context signal; useful in reconstruction
+         * queries like "what happened before the alarm" — footsteps
+         * immediately before an event imply a person was involved).
+         */
+        stepListener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                onObservation(Observation("step", 0.5f, System.currentTimeMillis()))
+            }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+
+        // Register whatever hardware actually exists. Absent sensors simply
+        // never emit Observations; fusion treats them like silent sensors.
+        registerIfAvailable(Sensor.TYPE_MAGNETIC_FIELD, hapticListener, SensorManager.SENSOR_DELAY_GAME)
+
+        val barometer = sensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE)
+        val lightSensor = sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT)
+        if (barometer != null && lightSensor == null) {
+            // Device has a barometer but no light sensor: reuse the listener slot.
+            sensorManager.registerListener(baroListener, barometer, SensorManager.SENSOR_DELAY_UI)
+        } else {
+            if (barometer != null) {
+                sensorManager.registerListener(baroListener, barometer, SensorManager.SENSOR_DELAY_UI)
+            }
+            if (lightSensor != null) {
+                sensorManager.registerListener(lightListenerOnly, lightSensor, SensorManager.SENSOR_DELAY_UI)
+            }
+        }
+
+        registerIfAvailable(Sensor.TYPE_LINEAR_ACCELERATION, linearListener, SensorManager.SENSOR_DELAY_GAME)
+        registerIfAvailable(Sensor.TYPE_GYROSCOPE, gyroListener, SensorManager.SENSOR_DELAY_GAME)
+
+        val stepDetector = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR)
+        if (stepDetector != null) {
+            sensorManager.registerListener(stepListener, stepDetector, SensorManager.SENSOR_DELAY_UI)
+        }
+
+        // SIGNIFICANT MOTION — hardware batched trigger for "device was moved
+        // in a notable way". Evidence toward: person_present. One-shot per
+        // trigger; re-armed after each firing.
+        val sigMotion = sensorManager.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION)
+        if (sigMotion != null) {
+            val sigListener = object : SensorEventListener {
+                override fun onSensorChanged(event: SensorEvent) {
+                    sigMotionTriggeredAt = System.currentTimeMillis()
+                    onObservation(Observation("sigmotion", 0.5f, sigMotionTriggeredAt))
+                }
+                override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+            }
+            sensorManager.registerListener(sigListener, sigMotion, SensorManager.SENSOR_DELAY_UI)
+        }
+    }
+
+    private fun registerIfAvailable(type: Int, listener: SensorEventListener, rate: Int) {
+        val sensor = sensorManager.getDefaultSensor(type) ?: return
+        sensorManager.registerListener(listener, sensor, rate)
+    }
+
     // ── Confidence mapping ────────────────────────────────────────────────
 
     /** Maps a raw [value] to 0.0-1.0, returning 0 if below [threshold]. */
@@ -488,6 +696,7 @@ class MainActivity : AppCompatActivity() {
             if (finalEvent.status == "CONFIRMED") {
                 fireConfirmedNotification(eventType, finalEvent.cameraConfidence,
                     finalEvent.audioConfidence, finalEvent.motionConfidence)
+                runOnUiThread { vibrateOnConfirmed() }   // haptic feedback (actuator)
             }
 
             // Step 6: save a copy of the current audio clip as evidence (best-effort)
@@ -584,6 +793,17 @@ class MainActivity : AppCompatActivity() {
             "audio"  -> binding.tvAudioLive.text  = "🔊 $pct"
             "motion" -> binding.tvMotionLive.text  = "📳 $pct"
         }
+    }
+
+    /** Must be called on UI thread. */
+    private fun vibrateOnConfirmed() {
+        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            (getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            getSystemService(VIBRATOR_SERVICE) as Vibrator
+        }
+        vibrator.vibrate(VibrationEffect.createOneShot(120, VibrationEffect.DEFAULT_AMPLITUDE))
     }
 
     // ── Feature B: CONFIRMED Push Notification ────────────────────────────

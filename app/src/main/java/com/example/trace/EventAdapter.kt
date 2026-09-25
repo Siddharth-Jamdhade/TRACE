@@ -36,14 +36,8 @@ class EventAdapter(
         RecyclerView.ViewHolder(binding.root) {
 
         fun bind(event: Event) {
-            // Source icon
-            binding.tvIcon.text = when (event.source) {
-                "audio"  -> "🔊"
-                "motion" -> "📳"
-                "camera" -> "📷"
-                "video"  -> "🎥"
-                else     -> "❓"
-            }
+            // Source icon (full mapping lives in SensorRegistry)
+            binding.tvIcon.text = SensorRegistry.iconFor(event.source)
             binding.tvEventType.text = event.type.replace("_", " ")
                 .replaceFirstChar { it.uppercase() }
             binding.tvTimestamp.text = timeFmt.format(Date(event.timestamp))

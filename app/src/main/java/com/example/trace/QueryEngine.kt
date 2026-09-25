@@ -64,6 +64,26 @@ object QueryEngine {
                 if (list.isEmpty()) "No fall or impact events recorded."
                 else "Fall/Impact events:\n${describeList(list)}"
             }
+            "door" in q -> {
+                val list = sorted.filter { "door" in it.type }
+                if (list.isEmpty()) "No door events recorded."
+                else "Door events:\n${describeList(list)}"
+            }
+            "person" in q || "someone" in q -> {
+                val list = sorted.filter { it.type == "person_present" }
+                if (list.isEmpty()) "No footsteps recorded."
+                else "Person presence:\n${describeList(list)}"
+            }
+            "light" in q || "lights" in q -> {
+                val list = sorted.filter { it.type == "lights_off" }
+                if (list.isEmpty()) "No lights_off events recorded."
+                else "Lights-off events:\n${describeList(list)}"
+            }
+            "pressure" in q -> {
+                val list = sorted.filter { it.type == "pressure_shift" }
+                if (list.isEmpty()) "No pressure shifts recorded."
+                else "Pressure shifts:\n${describeList(list)}"
+            }
             "alarm" in q || "sound" in q || "audio" in q -> {
                 val list = sorted.filter { it.source == "audio" }
                 if (list.isEmpty()) "No audio events recorded."
@@ -88,7 +108,7 @@ object QueryEngine {
                 "  why was it confirmed?   - sensor evidence breakdown\n" +
                 "  show last event         - most recent entry\n" +
                 "  how many events?        - status counts\n" +
-                "  list all / confirmed / fall / alarm"
+                "  list all / confirmed / fall / door / person / lights / pressure"
             }
         }
     }
@@ -110,6 +130,12 @@ object QueryEngine {
         confLine(this, "Camera", event.cameraConfidence)
         confLine(this, "Audio ", event.audioConfidence)
         confLine(this, "Motion", event.motionConfidence)
+        // Extra sensors (magnetometer, barometer, light, linear, gyro, step)
+        event.sensorBreakdown?.split("|")?.filter { it.isNotBlank() }?.forEach { pair ->
+            val sensor = pair.substringBefore(':')
+            val conf   = pair.substringAfter(':').toFloatOrNull()
+            if (conf != null) appendLine("  ${SensorRegistry.labelFor(sensor)}: ${"%.0f".format(conf * 100)}%")
+        }
         appendLine()
         val strong = listOfNotNull(event.cameraConfidence, event.audioConfidence, event.motionConfidence)
             .count { it > 0.6f }
