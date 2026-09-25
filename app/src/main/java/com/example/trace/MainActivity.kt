@@ -27,6 +27,7 @@ import androidx.core.content.ContextCompat
 import com.example.trace.databinding.ActivityMainBinding
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
@@ -73,8 +74,21 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var database: TraceDatabase
 
-    /** Session this screen is recording into (Stage 1: one per app run). */
+    /**
+     * Session this screen is recording into.
+     *
+     * Written from [appScope] and read from the UI thread by the status chip, so
+     * it is volatile. Only ever holds a fully-hashed session.
+     */
+    @Volatile
     private var activeSession: Session? = null
+
+    /** Ticks the app bar timer; only alive while this screen is resumed. */
+    private val uiScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private var statusTicker: Job? = null
+
+    /** Palette this activity was created with, to spot a change made in Settings. */
+    private var wallpaperPaletteAtCreate: Boolean? = null
 
     // One coroutine scope for all background DB/IO work, cancelled in onDestroy.
     private val appScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -172,6 +186,9 @@ class MainActivity : AppCompatActivity() {
     // Set to true only when tuning thresholds in Android Studio.
     private val DEBUG_RAW_VALUES = false
 
+    /** App bar status refresh interval. */
+    private val STATUS_TICK_MS = 1_000L
+
     // ── Event cooldown ────────────────────────────────────────────────────
     // ConcurrentHashMap because camera (cameraExecutor thread), audio (main), and
     // motion (main) all write to this map concurrently.
@@ -211,6 +228,17 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // The app bar is this screen's only navigation surface. The menu is wired
+        // straight to the toolbar instead of through setSupportActionBar: this is a
+        // custom top row with its own brand label, and an ActionBar would also push
+        // the activity label into the toolbar, duplicating "TRACE".
+        binding.toolbar.inflateMenu(R.menu.menu_dashboard)
+        binding.toolbar.setOnMenuItemClickListener { item -> onAppBarAction(item.itemId) }
+
+        // Remembered so a palette change made in Settings can be picked up on the
+        // way back, since dynamic colour is applied at activity creation.
+        wallpaperPaletteAtCreate = TraceAppearance.useWallpaperPalette(this)
 
         // KEEP SCREEN ON during demo so the OS never kills TRACE mid-recording.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -312,21 +340,99 @@ class MainActivity : AppCompatActivity() {
             if (recovered > 0) {
                 Log.i("TRACE", "Recovered $recovered interrupted session(s) from a previous run")
             }
+
+            // Open this run's session straight away: the app bar needs a real state
+            // to show, and no observation should ever arrive without a chain to join.
+            activeSession = SessionManager.ensureActiveSession(database.sessionDao())
+            runOnUiThread { updateSessionStatus() }
         }
     }
 
     /** Updates the on-screen status bar — this is what judges see on the phone. */
     private fun updateStatusBar(lastEventType: String? = null, lastStatus: String? = null) {
-        val line1 = if (lastEventType != null)
-            "LAST EVENT: $lastEventType  [$lastStatus]"
-        else
-            "TRACE ACTIVE — watching all sensors"
+        val line1 = when {
+            evidenceLocked.get() -> "🔒 EVIDENCE LOCKED — new observations are dropped"
+            lastEventType != null -> "LAST EVENT: $lastEventType  [$lastStatus]"
+            else -> "TRACE ACTIVE — watching all sensors"
+        }
         val line2 = "Events recorded: $eventCount   |   Tap  View Timeline  to review"
         binding.statusText.text = "$line1\n$line2"
     }
 
+    // ── App bar: session status chip ──────────────────────────────────────
+
+    /** (Re)starts the once-a-second status tick. Main thread only. */
+    private fun startStatusTicker() {
+        statusTicker?.cancel()
+        statusTicker = uiScope.launch {
+            while (isActive) {
+                updateSessionStatus()
+                delay(STATUS_TICK_MS)
+            }
+        }
+    }
+
+    /**
+     * Reflects capture state on the app bar chip.
+     *
+     * This is the one place Evidence Lock is visible while the camera keeps
+     * running: a locked timeline drops observations silently, so stating it is the
+     * difference between "nothing is happening" and "nothing is being recorded".
+     */
+    private fun updateSessionStatus() {
+        val chip = binding.chipSessionStatus
+        val session = activeSession
+
+        when {
+            evidenceLocked.get() -> {
+                chip.text = "🔒 LOCKED"
+                chip.setChipBackgroundColorResource(R.color.trace_error_container)
+                chip.setTextColor(ContextCompat.getColor(this, R.color.trace_on_error_container))
+            }
+            session != null -> {
+                val elapsed = System.currentTimeMillis() - session.startedAt
+                chip.text = "● REC ${formatElapsed(elapsed)}"
+                chip.setChipBackgroundColorResource(R.color.trace_primary_container)
+                chip.setTextColor(ContextCompat.getColor(this, R.color.trace_on_primary_container))
+            }
+            else -> {
+                chip.text = "IDLE"
+                chip.setChipBackgroundColorResource(R.color.trace_surface_container_high)
+                chip.setTextColor(ContextCompat.getColor(this, R.color.trace_on_surface_variant))
+            }
+        }
+    }
+
+    /** mm:ss, or h:mm:ss past the hour. */
+    private fun formatElapsed(ms: Long): String {
+        val totalSeconds = (ms / 1000).coerceAtLeast(0)
+        val hours = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
+        val seconds = totalSeconds % 60
+        return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds)
+        else "%02d:%02d".format(minutes, seconds)
+    }
+
+    // ── App bar actions ───────────────────────────────────────────────────
+
+    /** Handles the app bar's actions. */
+    private fun onAppBarAction(itemId: Int): Boolean = when (itemId) {
+        // Previous Sessions. Timeline is today's event browser; Stage 5 replaces it
+        // with the session-grouped list.
+        R.id.action_sessions -> {
+            startActivity(Intent(this, TimelineActivity::class.java))
+            true
+        }
+        R.id.action_settings -> {
+            startActivity(Intent(this, SettingsActivity::class.java))
+            true
+        }
+        else -> false
+    }
+
     override fun onPause() {
         super.onPause()
+        statusTicker?.cancel()
         // Unregister while screen is off to save battery.
         if (::sensorManager.isInitialized) {
             sensorManager.unregisterListener(sensorListener)
@@ -336,6 +442,22 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+
+        // Evidence Lock can be armed from the Timeline while this screen is paused,
+        // so the cached value must not be trusted across a resume.
+        evidenceLocked.set(EvidenceLock.isLocked(this))
+
+        if (wallpaperPaletteAtCreate != null &&
+            wallpaperPaletteAtCreate != TraceAppearance.useWallpaperPalette(this)
+        ) {
+            // Posted rather than called inline: re-creating during onResume can race
+            // the lifecycle callback we are inside.
+            binding.root.post { recreate() }
+            return
+        }
+
+        startStatusTicker()
+
         // Re-register when app comes back to foreground.
         if (::sensorManager.isInitialized && extendedSensorsStarted) {
             val accel = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
@@ -398,6 +520,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         audioDispatcher.close()
+        uiScope.cancel()
     }
 
     // ── Camera ────────────────────────────────────────────────────────────

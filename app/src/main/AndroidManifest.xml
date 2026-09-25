@@ -40,6 +40,11 @@
             android:name=".EventDetailActivity"
             android:exported="false" />
 
+        <!-- Settings: app-wide configuration (appearance today, more later) -->
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false" />
+
         <!-- Video import: pick videos + ML Kit analysis -->
         <activity
             android:name=".VideoImportActivity"

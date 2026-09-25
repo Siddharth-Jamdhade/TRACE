@@ -16,6 +16,63 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
+    <!--
+      Top app bar, overlaid on the preview so the camera stays full-bleed.
+
+      The brand and the session status chip are plain siblings rather than
+      Toolbar children: a Toolbar applies its own gravity rules to child views,
+      which would fight the menu icons for the right edge of the bar.
+    -->
+    <LinearLayout
+        android:id="@+id/appBar"
+        android:layout_width="0dp"
+        android:layout_height="?attr/actionBarSize"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@color/trace_scrim"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingStart="16dp"
+            android:paddingEnd="10dp"
+            android:text="TRACE"
+            android:textColor="?attr/colorPrimary"
+            android:textSize="17sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.06" />
+
+        <!-- Capture state: REC / LOCKED / IDLE. Text carries the meaning, colour only reinforces it. -->
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chipSessionStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:clickable="false"
+            android:checkable="false"
+            android:focusable="false"
+            android:text="IDLE"
+            android:textSize="11sp"
+            android:fontFamily="monospace"
+            android:textColor="@color/trace_on_surface_variant"
+            app:chipBackgroundColor="@color/trace_surface_container_high"
+            app:chipMinHeight="26dp"
+            app:ensureMinTouchTargetSize="false" />
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/toolbar"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent" />
+
+    </LinearLayout>
+
     <!-- Semi-transparent HUD overlay pinned to the bottom -->
     <LinearLayout
         android:layout_width="0dp"

@@ -86,7 +86,8 @@ Every sensor below feeds the same Observation → EventExtractor → FusionEngin
 |---------|-------------|
 | 📡 **Live Sensor HUD** | Real-time `📷 45%  🔊 12%  📳 78%` readouts on the main screen — watch the AI sensing live |
 | 🔔 **Silent Alerts** | A visual-only notification fires when an incident is `CONFIRMED`. TRACE never plays a sound or vibrates during a session |
-| 🔒 **Lock Evidence** | One-tap sealing — stops all new recordings, locks the hash chain as a permanent legal artifact |
+| 📟 **Session Status Chip** | The app bar always states the capture state: `● REC 04:12` with a live timer, `🔒 LOCKED` when evidence is sealed, or `IDLE` — no ambiguity about whether TRACE is recording |
+| 🔒 **Lock Evidence** | One-tap sealing — stops all new recordings, locks the hash chain as a permanent legal artifact. The dashboard status chip shows `🔒 LOCKED` while it is armed |
 
 ---
 
@@ -148,15 +149,25 @@ Every sensor below feeds the same Observation → EventExtractor → FusionEngin
 ```
 app/src/main/
 ├── java/com/example/trace/
-│   ├── MainActivity.kt          ← Sensor hub: camera + mic + accelerometer
+│   ├── TraceApplication.kt      ← Material You dynamic colour wiring
+│   ├── TraceAppearance.kt       ← Wallpaper vs TRACE palette preference
+│   ├── MainActivity.kt          ← Sensor hub: dashboard + app bar + status chip
+│   ├── Session.kt               ← Room entity: one capture period, one chain
+│   ├── SessionDao.kt            ← Session queries
+│   ├── SessionManager.kt        ← Create / close / recover sessions
+│   ├── ChainWriter.kt           ← The only writer allowed to append to a chain
+│   ├── EvidenceLock.kt          ← Lock state, checked by every writer
 │   ├── Event.kt                 ← Room entity for one incident record
-│   ├── EventDao.kt              ← All SQL queries
-│   ├── TraceDatabase.kt         ← Room database singleton
+│   ├── EventDao.kt              ← All SQL queries (session-scoped)
+│   ├── TraceDatabase.kt         ← Room database + explicit migrations
 │   ├── Observation.kt           ← Raw sensor spike data class
+│   ├── SensorRegistry.kt        ← Canonical sensor ids, icons, roles
+│   ├── RollingBaseline.kt       ← EWMA baselines for magnetometer/barometer/light
 │   ├── EventExtractor.kt        ← Maps Observation → event type label
 │   ├── FusionEngine.kt          ← Multi-sensor fusion + status assignment
-│   ├── HashChain.kt             ← SHA-256 tamper-evident chain
-│   ├── QueryEngine.kt           ← NLP keyword engine
+│   ├── HashChain.kt             ← SHA-256 tamper-evident chains (per session)
+│   ├── QueryEngine.kt           ← Keyword query engine
+│   ├── SettingsActivity.kt      ← Settings (appearance today, more later)
 │   ├── VideoAnalyzer.kt         ← Keyframe extraction + ML Kit labeling
 │   ├── VideoImportActivity.kt   ← Multi-video picker and analyser
 │   ├── TimelineActivity.kt      ← Timeline + query bar + lock evidence
@@ -164,13 +175,18 @@ app/src/main/
 │   └── EventAdapter.kt          ← RecyclerView adapter with DiffUtil
 └── res/
     ├── layout/
-    │   ├── activity_main.xml          ← Camera HUD with live sensor readouts
-    │   ├── activity_timeline.xml      ← Query bar + locked banner + list
-    │   ├── activity_event_detail.xml  ← Confidence bars + hash section
+    │   ├── activity_main.xml          ← Camera + overlaid app bar + status chip + HUD
+    │   ├── activity_timeline.xml      ← Toolbar + query bar + locked banner + list
+    │   ├── activity_event_detail.xml  ← Toolbar + confidence bars + hash section
     │   ├── activity_video_import.xml  ← Video picker + progress
+    │   ├── activity_settings.xml      ← Settings (appearance today)
     │   └── item_event.xml             ← Card with icon + pill badge
+    ├── menu/
+    │   └── menu_dashboard.xml         ← Previous sessions + Settings actions
     ├── drawable/
-    │   └── status_pill.xml            ← Rounded pill shape for status badge
+    │   ├── status_pill.xml            ← Rounded pill shape for status badge
+    │   ├── ic_sessions.xml            ← App bar: previous sessions
+    │   └── ic_settings.xml            ← App bar: settings
     └── values/
         ├── themes.xml                 ← Material 3 theme (see Theming below)
         └── colors.xml                 ← TRACE palette + fixed semantic colours
@@ -226,6 +242,7 @@ Grant all permissions when prompted:
 | Type question + ASK | Instant NLP answer |
 | Tap 🎥 Analyse Video | Import & chronologically sort video clips |
 | Tap 🔒 LOCK | Seal evidence chain permanently |
+| Tap the app bar icons | Previous Sessions (timeline) / Settings (palette switch) |
 
 ---
 
