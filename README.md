@@ -69,8 +69,8 @@ Every sensor below feeds the same Observation → EventExtractor → FusionEngin
 ### Intelligence
 | Feature | Description |
 |---------|-------------|
-| ⚡ **Sensor Fusion Engine** | Cross-references all sensors in a ±2s window. ≥2 sensors agreeing → `CONFIRMED`. 1 sensor → `UNCONFIRMED`. 0 → `REJECTED` |
-| 🔐 **SHA-256 Hash Chain** | Every event is cryptographically chained to the previous one. Tampering breaks the entire chain permanently |
+| ⚡ **Sensor Fusion Engine** | Cross-references all sensors in a ±2s window *within the same session*. ≥2 sensors agreeing → `CONFIRMED`. 1 sensor → `UNCONFIRMED`. 0 → `REJECTED` |
+| 🔐 **SHA-256 Hash Chain** | Every event is cryptographically chained to the previous event **of its session**. Tampering breaks that session's chain permanently — and cannot invalidate any other session |
 | 💬 **NLP Query Engine** | Ask plain-English questions like *"what happened before the alarm?"* — answered from local DB with zero internet |
 
 ### Evidence
@@ -85,7 +85,7 @@ Every sensor below feeds the same Observation → EventExtractor → FusionEngin
 | Feature | Description |
 |---------|-------------|
 | 📡 **Live Sensor HUD** | Real-time `📷 45%  🔊 12%  📳 78%` readouts on the main screen — watch the AI sensing live |
-| 🔔 **Push Notifications** | High-priority notification fires the moment an incident is `CONFIRMED` (even when app is minimized) |
+| 🔔 **Silent Alerts** | A visual-only notification fires when an incident is `CONFIRMED`. TRACE never plays a sound or vibrates during a session |
 | 🔒 **Lock Evidence** | One-tap sealing — stops all new recordings, locks the hash chain as a permanent legal artifact |
 
 ---
@@ -218,15 +218,34 @@ Grant all permissions when prompted:
 
 ## 🔐 Hash Chain Verification
 
-```
-GENESIS = "0000...0000" (64 zeros)
+Every session anchors its own chain. The session header is hashed first, and
+the session's first event links to *that* — not to a shared genesis block:
 
-Event 1: hash = SHA256("impact|1234567890|motion|0.83|CONFIRMED" + GENESIS)
-Event 2: hash = SHA256("alarm|1234567891|audio|0.91|CONFIRMED"  + Event1.hash)
+```
+GENESIS      = "0000...0000" (64 zeros) — used only by the pre-session timeline
+sessionHash  = SHA256("trace-session-v1|7|site inspection|1730000000000|motion|audio")
+
+Event 1: hash = SHA256("impact|1234567890|motion|0.83" + sessionHash)
+Event 2: hash = SHA256("alarm|1234567891|audio|0.91" + Event1.hash)
 Event 3: hash = SHA256("object_moves|...|UNCONFIRMED" + Event2.hash)
 ```
 
-Delete Event 2 → Event 3 shows **INVALID** → tampering is cryptographically proven.
+Because the session id, description, start time and sensor set are inside
+`sessionHash`, editing the session description afterwards invalidates the whole
+chain unless every event is rewritten. Deleting Event 2 makes Event 3
+**INVALID**. Both checks are per session, so a damaged session can never make a
+healthy one look broken.
+
+### Sessions
+
+| Concept | Behaviour |
+|---------|-----------|
+| **One chain per session** | Events link only to other events of the same session; deleting or exporting one session cannot affect another |
+| **Session header hash** | Binds id, nature-of-work, start time and sensor set to the evidence. Closing a session or refreshing its counters does **not** change the hash |
+| **Pre-session (legacy) evidence** | Events recorded before sessions existed are migrated into a synthetic `Pre-session timeline (legacy)` session whose chain stays anchored on `GENESIS`, so their hashes are never recomputed |
+| **Imported footage** | Video import creates its own `Imported footage` session, keeping provenance obvious and its chain independent of any live session |
+| **Interrupted sessions** | A crash or force-stop leaves the session `ACTIVE`; the next launch closes it as `INTERRUPTED` with its duration and counters filled in |
+| **Fusion isolation** | The ±2s fusion window only ever reads the current session, so overlapping timestamps in imported footage cannot confirm a live event |
 
 ---
 

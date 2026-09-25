@@ -81,6 +81,10 @@ class VideoImportActivity : AppCompatActivity() {
                 VideoAnalyzer.getVideoCreationTime(this@VideoImportActivity, uri)
             }
 
+            // Imported evidence gets its own session: provenance stays obvious
+            // and its chain stays independent of any live session.
+            val session = SessionManager.createImportSession(database.sessionDao())
+
             var totalEvents = 0
 
             sorted.forEachIndexed { idx, uri ->
@@ -105,13 +109,16 @@ class VideoImportActivity : AppCompatActivity() {
                 // ChainWriter is the only writer allowed to touch the chain, so
                 // imported events link correctly alongside live sensor events.
                 for (event in events) {
-                    ChainWriter.append(database.eventDao(), event) { inserted ->
+                    ChainWriter.append(database.eventDao(), session, event) { inserted ->
                         FusionEngine.buildEnrichedEvent(inserted, listOf(inserted))
                     }
                 }
 
                 totalEvents += events.size
             }
+
+            // Fill in the session's duration and counters now the batch is stored.
+            SessionManager.endSession(database.sessionDao(), database.eventDao(), session.id)
 
             withContext(Dispatchers.Main) {
                 binding.progressBar.visibility = View.GONE

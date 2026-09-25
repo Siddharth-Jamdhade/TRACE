@@ -25,16 +25,32 @@ interface EventDao {
     @Query("SELECT * FROM events WHERE id = :eventId LIMIT 1")
     suspend fun getEventById(eventId: Long): Event?
 
+    // ── Session-scoped queries ────────────────────────────────────────────
+
+    /** Events of one session, in append (custody) order. */
+    @Query("SELECT * FROM events WHERE sessionId = :sessionId ORDER BY id ASC")
+    suspend fun getEventsForSession(sessionId: Long): List<Event>
+
     /**
-     * The most recently *inserted* event — the current chain tip.
+     * The most recently *appended* event of a session — its chain tip.
      *
      * Deliberately ordered by id, not timestamp: the chain records the order in
      * which TRACE appended evidence. Video import can contribute an event whose
      * timestamp is older than the current tip, and ordering by timestamp would
      * then link the new event to a row that does not actually precede it.
      */
-    @Query("SELECT * FROM events ORDER BY id DESC LIMIT 1")
-    suspend fun getChainTip(): Event?
+    @Query("SELECT * FROM events WHERE sessionId = :sessionId ORDER BY id DESC LIMIT 1")
+    suspend fun getChainTipForSession(sessionId: Long): Event?
+
+    @Query("SELECT COUNT(*) FROM events WHERE sessionId = :sessionId")
+    suspend fun countEventsForSession(sessionId: Long): Int
+
+    @Query("SELECT COUNT(*) FROM events WHERE sessionId = :sessionId AND status = :status")
+    suspend fun countEventsForSessionWithStatus(sessionId: Long, status: String): Int
+
+    /** Timestamp of the last event in a session, or null if it has none. */
+    @Query("SELECT MAX(timestamp) FROM events WHERE sessionId = :sessionId")
+    suspend fun lastTimestampForSession(sessionId: Long): Long?
 
     @Query("UPDATE events SET status = :newStatus WHERE id = :eventId")
     suspend fun updateStatus(eventId: Long, newStatus: String)
@@ -42,9 +58,18 @@ interface EventDao {
     @Query("SELECT * FROM events WHERE timestamp >= :sinceTimestamp ORDER BY timestamp ASC")
     suspend fun getRecentEvents(sinceTimestamp: Long): List<Event>
 
-    /** Returns all events whose timestamp falls within [from, to] inclusive. */
-    @Query("SELECT * FROM events WHERE timestamp BETWEEN :from AND :to ORDER BY timestamp ASC")
-    suspend fun getEventsInWindow(from: Long, to: Long): List<Event>
+    /**
+     * Events of one session whose timestamp falls within [from, to] inclusive.
+     *
+     * Session-scoped so a fusion window can never pull evidence in from another
+     * session — for example imported footage whose timestamps overlap a live
+     * session would otherwise be able to confirm (or be confirmed by) it.
+     */
+    @Query(
+        "SELECT * FROM events WHERE sessionId = :sessionId " +
+            "AND timestamp BETWEEN :from AND :to ORDER BY timestamp ASC"
+    )
+    suspend fun getEventsInWindowForSession(sessionId: Long, from: Long, to: Long): List<Event>
 
     @Query("DELETE FROM events")
     suspend fun clearAll()

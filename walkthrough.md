@@ -76,7 +76,7 @@ Phone Sensors
 | File | Changes |
 |------|---------|
 | [`Event.kt`](file:///c:/Users/SIDDHARTH/AndroidStudioProjects/TRACE/app/src/main/java/com/example/trace/Event.kt) | +6 nullable fields: `cameraConfidence`, `audioConfidence`, `motionConfidence`, `evidenceClipPath`, `hash`, `previousHash` |
-| [`EventDao.kt`](file:///c:/Users/SIDDHARTH/AndroidStudioProjects/TRACE/app/src/main/java/com/example/trace/EventDao.kt) | +`@Update update()`, +`getEventById()`, +`getChainTip()`, +`getEventsInWindow()` |
+| [`EventDao.kt`](file:///c:/Users/SIDDHARTH/AndroidStudioProjects/TRACE/app/src/main/java/com/example/trace/EventDao.kt) | +`@Update update()`, +`getEventById()`, +`getChainTipForSession()`, +`getEventsInWindowForSession()` |
 | [`TraceDatabase.kt`](file:///c:/Users/SIDDHARTH/AndroidStudioProjects/TRACE/app/src/main/java/com/example/trace/TraceDatabase.kt) | Version 2→3, explicit `MIGRATION_2_3` — destructive fallback removed |
 | [`EventExtractor.kt`](file:///c:/Users/SIDDHARTH/AndroidStudioProjects/TRACE/app/src/main/java/com/example/trace/EventExtractor.kt) | Added `"camera"` source: `>0.75` → `"object_falls"`, `>0.50` → `"object_moves"` |
 | [`MainActivity.kt`](file:///c:/Users/SIDDHARTH/AndroidStudioProjects/TRACE/app/src/main/java/com/example/trace/MainActivity.kt) | Full refactor: ViewBinding, ImageAnalysis frame-differencing, FusionEngine, HashChain, evidence clip saving, ConcurrentHashMap cooldown, `onPause`/`onResume` sensor lifecycle fix |

@@ -4,9 +4,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * TRACE — the single serialised writer for the tamper-evidence hash chain.
+ * TRACE — the single serialised writer for the tamper-evidence hash chains.
  *
- * Every event that enters the timeline MUST be stored through [append].
+ * Every event that enters a session MUST be stored through [append].
  *
  * Why this exists
  * ---------------
@@ -29,7 +29,13 @@ object ChainWriter {
     private val mutex = Mutex()
 
     /**
-     * Inserts [event] and links it to the current chain tip.
+     * Inserts [event] into [session]'s chain and links it to that chain's tip.
+     *
+     * The event's [Event.sessionId] is set here, so callers cannot accidentally
+     * file evidence under the wrong session. The first event of a session links
+     * to [Session.sessionHash]; every later event links to the previous event of
+     * the same session. Chains therefore never cross sessions, and damaging one
+     * session cannot invalidate another.
      *
      * @param enrich maps the freshly inserted event (whose `id` has now been
      *   assigned) into the row to store — normally
@@ -40,15 +46,17 @@ object ChainWriter {
      */
     suspend fun append(
         dao: EventDao,
+        session: Session,
         event: Event,
         enrich: suspend (Event) -> Event = { it }
     ): Event = mutex.withLock {
         // Read the tip and write the new link while holding the lock, so no
         // other event can be inserted in between.
-        val previousHash = dao.getChainTip()?.hash ?: HashChain.GENESIS_HASH
+        val previousHash = dao.getChainTipForSession(session.id)?.hash ?: session.sessionHash
 
-        val inserted = event.copy(id = dao.insert(event))
-        val enriched = enrich(inserted)
+        val inserted = event.copy(sessionId = session.id)
+        val stored = inserted.copy(id = dao.insert(inserted))
+        val enriched = enrich(stored)
         val finalEvent = enriched.copy(
             hash = HashChain.computeHash(enriched, previousHash),
             previousHash = previousHash

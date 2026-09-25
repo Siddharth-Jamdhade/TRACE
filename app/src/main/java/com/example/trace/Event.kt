@@ -1,5 +1,6 @@
 package com.example.trace
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -47,5 +48,17 @@ data class Event(
     val hash: String? = null,
 
     /** Hash of the preceding event in the timeline, or GENESIS_HASH for the first. */
-    val previousHash: String? = null
+    val previousHash: String? = null,
+
+    // --- Session ownership -----------------------------------------------
+    /**
+     * Session this event belongs to (see [Session]).
+     *
+     * Defaults to [Session.LEGACY_ID] with a matching SQL default so the
+     * v3 → v4 migration can add the column without rewriting the events table.
+     * Deliberately NOT part of the hash payload: session membership is bound by
+     * the chain anchor instead (see [HashChain.verifySession]).
+     */
+    @ColumnInfo(defaultValue = "1")
+    val sessionId: Long = Session.LEGACY_ID
 )

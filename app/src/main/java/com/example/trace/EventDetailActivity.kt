@@ -65,12 +65,16 @@ class EventDetailActivity : AppCompatActivity() {
     private fun loadEvent(eventId: Long) {
         scope.launch {
             val e          = database.eventDao().getEventById(eventId) ?: return@launch
-            val allEvents  = database.eventDao().getAllEvents()
             currentEvent   = e
 
-            // Verify this event and the full chain
+            // Verify this event against itself, and against its own session's
+            // chain — events in other sessions cannot affect this verdict.
+            val session     = database.sessionDao().getSessionById(e.sessionId)
             val singleValid = HashChain.verifySingle(e)
-            val chainValid  = HashChain.verifyChain(allEvents)
+            val chainValid  = session != null && HashChain.verifySession(
+                session,
+                database.eventDao().getEventsForSession(e.sessionId)
+            )
 
             withContext(Dispatchers.Main) {
                 renderEvent(e, singleValid, chainValid)

@@ -8,61 +8,18 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.util.Collections
 
 /**
- * Stage 0 regression tests for the tamper-evidence hash chain.
+ * Tests for the append path of a session's hash chain.
  *
- * The bug these lock down: the capture pipeline used to read the chain tip and
- * insert the new event in two separate steps, so two sensors firing within the
+ * The original bug these lock down: the capture pipeline read the chain tip and
+ * inserted the new event in two separate steps, so two sensors firing within the
  * same few milliseconds could both chain onto the same predecessor and fork the
- * timeline. [HashChain.verifyChain] then reported the whole timeline as INVALID.
+ * timeline.
  */
 class ChainWriterTest {
 
-    /**
-     * In-memory [EventDao] that mirrors the real DAO's ordering semantics:
-     * [EventDao.getChainTip] is the highest id (last inserted), and window
-     * queries are ordered by timestamp.
-     */
-    private class FakeEventDao : EventDao {
-
-        private val rows = Collections.synchronizedList(mutableListOf<Event>())
-        private var nextId = 1L
-
-        override suspend fun insert(event: Event): Long {
-            val id = nextId++
-            rows.add(event.copy(id = id))
-            return id
-        }
-
-        override suspend fun update(event: Event) {
-            val index = rows.indexOfFirst { it.id == event.id }
-            if (index >= 0) rows[index] = event
-        }
-
-        override suspend fun getAllEvents(): List<Event> = rows.toList()
-
-        override suspend fun getEventById(eventId: Long): Event? =
-            rows.firstOrNull { it.id == eventId }
-
-        override suspend fun getChainTip(): Event? = rows.maxByOrNull { it.id }
-
-        override suspend fun updateStatus(eventId: Long, newStatus: String) {
-            val existing = rows.firstOrNull { it.id == eventId } ?: return
-            update(existing.copy(status = newStatus))
-        }
-
-        override suspend fun getRecentEvents(sinceTimestamp: Long): List<Event> =
-            rows.filter { it.timestamp >= sinceTimestamp }.sortedBy { it.timestamp }
-
-        override suspend fun getEventsInWindow(from: Long, to: Long): List<Event> =
-            rows.filter { it.timestamp in from..to }.sortedBy { it.timestamp }
-
-        override suspend fun clearAll() {
-            rows.clear()
-        }
-    }
+    private val session = testSession(id = 1)
 
     /** A sensor event whose timestamp increases with [seq]. */
     private fun event(seq: Int) = Event(
@@ -73,12 +30,14 @@ class ChainWriterTest {
     )
 
     @Test
-    fun firstEventLinksToGenesis() {
+    fun firstEventLinksToTheSessionAnchor() {
         runBlocking {
-            val stored = ChainWriter.append(FakeEventDao(), event(0))
+            val dao = FakeEventDao()
+            val stored = ChainWriter.append(dao, session, event(0))
 
-            assertEquals(HashChain.GENESIS_HASH, stored.previousHash)
-            assertEquals(HashChain.computeHash(stored, HashChain.GENESIS_HASH), stored.hash)
+            assertEquals(session.sessionHash, stored.previousHash)
+            assertEquals(session.id, stored.sessionId)
+            assertEquals(HashChain.computeHash(stored, session.sessionHash), stored.hash)
         }
     }
 
@@ -86,11 +45,14 @@ class ChainWriterTest {
     fun sequentialAppendsFormAVerifiableChain() {
         runBlocking {
             val dao = FakeEventDao()
-            repeat(5) { ChainWriter.append(dao, event(it)) }
+            repeat(5) { ChainWriter.append(dao, session, event(it)) }
 
-            val stored = dao.getAllEvents()
+            val stored = dao.getEventsForSession(session.id)
             assertEquals(5, stored.size)
-            assertTrue("a sequentially appended chain must verify", HashChain.verifyChain(stored))
+            assertTrue(
+                "a sequentially appended chain must verify",
+                HashChain.verifySession(session, stored)
+            )
         }
     }
 
@@ -101,17 +63,17 @@ class ChainWriterTest {
             val total = 40
 
             (0 until total)
-                .map { seq -> async(Dispatchers.Default) { ChainWriter.append(dao, event(seq)) } }
+                .map { seq -> async(Dispatchers.Default) { ChainWriter.append(dao, session, event(seq)) } }
                 .awaitAll()
 
-            val stored = dao.getAllEvents()
+            val stored = dao.getEventsForSession(session.id)
             assertEquals(total, stored.size)
 
             // Every event must match the hash recorded for itself.
             stored.forEach { assertTrue("event ${it.id} fails its own hash check", HashChain.verifySingle(it)) }
 
-            // Exactly one event may start from GENESIS ...
-            assertEquals(1, stored.count { it.previousHash == HashChain.GENESIS_HASH })
+            // Exactly one event anchors on the session header ...
+            assertEquals(1, stored.count { it.previousHash == session.sessionHash })
 
             // ... and no two events may share a predecessor — that is a fork.
             assertEquals(
@@ -120,35 +82,29 @@ class ChainWriterTest {
                 stored.map { it.previousHash }.toSet().size
             )
 
-            // The whole chain must verify in append order. (Not asserted here
-            // before the fix: insertion order is decided by the mutex, while the
-            // test's timestamps ascend, so a forked chain is the failure mode.)
-            assertTrue("concurrently appended chain must verify", HashChain.verifyChain(stored))
+            // Verification walks append (id) order, so it must hold even though
+            // the mutex decides that order while the test's timestamps ascend.
+            assertTrue(
+                "concurrently appended chain must verify",
+                HashChain.verifySession(session, stored)
+            )
         }
     }
 
     @Test
-    fun importedEventWithOlderTimestampDoesNotBreakTheChain() {
+    fun anOlderTimestampedAppendStillLinksInAppendOrder() {
         runBlocking {
             val dao = FakeEventDao()
-            val live = ChainWriter.append(dao, event(10))
+            val live = ChainWriter.append(dao, session, event(10))
 
-            // Video import can contribute an event from earlier in the day, i.e.
-            // with a timestamp older than the current tip.
-            val imported = ChainWriter.append(
-                dao,
-                Event(
-                    type = "object_moves",
-                    timestamp = event(0).timestamp,
-                    source = "video",
-                    confidence = 0.7f
-                )
-            )
+            // Imported footage can contribute an event from earlier in the day,
+            // i.e. with a timestamp older than the current tip.
+            val imported = ChainWriter.append(dao, session, event(0))
 
-            assertEquals("imported event must link to the live tip", live.hash, imported.previousHash)
+            assertEquals("the later append must link to the live tip", live.hash, imported.previousHash)
             assertTrue(
-                "an older-timestamped import must not invalidate the chain",
-                HashChain.verifyChain(dao.getAllEvents())
+                "an older-timestamped append must not invalidate the chain",
+                HashChain.verifySession(session, dao.getEventsForSession(session.id))
             )
         }
     }
@@ -159,7 +115,7 @@ class ChainWriterTest {
             val dao = FakeEventDao()
             var seenId = 0L
 
-            val stored = ChainWriter.append(dao, event(0)) { inserted ->
+            val stored = ChainWriter.append(dao, session, event(0)) { inserted ->
                 seenId = inserted.id
                 inserted.copy(status = "CONFIRMED")
             }
@@ -174,16 +130,15 @@ class ChainWriterTest {
     fun tamperingWithAStoredEventBreaksTheChain() {
         runBlocking {
             val dao = FakeEventDao()
-            repeat(4) { ChainWriter.append(dao, event(it)) }
-            val stored = dao.getAllEvents()
+            repeat(4) { ChainWriter.append(dao, session, event(it)) }
 
-            val tampered = stored.mapIndexed { index, e ->
+            val tampered = dao.getEventsForSession(session.id).mapIndexed { index, e ->
                 if (index == 2) e.copy(type = "noise_complaint") else e
             }
 
             assertTrue(
                 "a modified event must fail chain verification",
-                !HashChain.verifyChain(tampered)
+                !HashChain.verifySession(session, tampered)
             )
         }
     }

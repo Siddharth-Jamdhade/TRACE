@@ -32,6 +32,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -49,7 +50,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  *   4. SensorManager accelerometer -> motion Observations
  *
  * Every Observation that crosses a threshold flows through:
- *   EventExtractor.extract()  ->  cooldown gate  ->  DB insert  ->
+ *   EventExtractor.extract()  ->  cooldown gate  ->
+ *   ChainWriter.append(session, ...)  ->  DB insert  ->
  *   FusionEngine.buildEnrichedEvent()  ->  HashChain.computeHash()  ->
  *   DB update  ->  evidence clip save
  *
@@ -68,6 +70,9 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var database: TraceDatabase
+
+    /** Session this screen is recording into (Stage 1: one per app run). */
+    private var activeSession: Session? = null
 
     // One coroutine scope for all background DB/IO work, cancelled in onDestroy.
     private val appScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -265,6 +270,19 @@ class MainActivity : AppCompatActivity() {
         startMotionMonitoring()
         startExtendedSensors()
         Log.i("TRACE", "Sensor availability:\n${SensorRegistry.availabilityReport(sensorManager)}")
+
+        // Stage 1: recording still starts with the app (the arming sheet lands in
+        // Stage 4), but every event now belongs to a session. Any session left
+        // ACTIVE by a previous run is closed as INTERRUPTED here.
+        appScope.launch {
+            val recovered = SessionManager.recoverInterruptedSessions(
+                database.sessionDao(),
+                database.eventDao()
+            )
+            if (recovered > 0) {
+                Log.i("TRACE", "Recovered $recovered interrupted session(s) from a previous run")
+            }
+        }
     }
 
     /** Updates the on-screen status bar — this is what judges see on the phone. */
@@ -330,6 +348,25 @@ class MainActivity : AppCompatActivity() {
         mediaRecorder = null
         cameraExecutor.shutdown()
         appScope.cancel()
+
+        // Close the session only when the user actually leaves the app. A process
+        // kill or a configuration change leaves it ACTIVE, and the next launch
+        // recovers it as INTERRUPTED.
+        if (isFinishing) {
+            activeSession?.let { session ->
+                // runBlocking rather than appScope: appScope is cancelled above,
+                // and the closing aggregates must be written before the process
+                // goes away.
+                runBlocking {
+                    SessionManager.endSession(
+                        database.sessionDao(),
+                        database.eventDao(),
+                        session.id
+                    )
+                }
+                activeSession = null
+            }
+        }
     }
 
     // ── Camera ────────────────────────────────────────────────────────────
@@ -666,16 +703,23 @@ class MainActivity : AppCompatActivity() {
 
         appScope.launch {
 
+            // Every event needs a session to anchor on. Normally one already
+            // exists; this lazy call only covers observations that fire while the
+            // session write is still in flight.
+            val session = activeSession ?: SessionManager
+                .ensureActiveSession(database.sessionDao())
+                .also { activeSession = it }
+
             val windowStart = obs.timestamp - FusionEngine.FUSION_WINDOW_MS
             val windowEnd   = obs.timestamp + FusionEngine.FUSION_WINDOW_MS
 
             // Steps 0-5: insert, fuse and hash. ChainWriter serialises the whole
             // read-tip → insert → hash → update sequence, so two sensors firing in
             // the same millisecond queue up instead of forking the chain.
-            val finalEvent = ChainWriter.append(database.eventDao(), baseEvent) { inserted ->
+            val finalEvent = ChainWriter.append(database.eventDao(), session, baseEvent) { inserted ->
                 FusionEngine.buildEnrichedEvent(
                     inserted,
-                    database.eventDao().getEventsInWindow(windowStart, windowEnd)
+                    database.eventDao().getEventsInWindowForSession(session.id, windowStart, windowEnd)
                 )
             }
             val newId = finalEvent.id
@@ -708,7 +752,8 @@ class MainActivity : AppCompatActivity() {
             // Step 7: retroactively update the status of all events in the window
             // so that a motion event recorded 1 s ago gets promoted to CONFIRMED when
             // an audio event fires now.
-            val updatedWindow = database.eventDao().getEventsInWindow(windowStart, windowEnd)
+            val updatedWindow = database.eventDao()
+                .getEventsInWindowForSession(session.id, windowStart, windowEnd)
             val fusedStatus   = FusionEngine.determineStatus(updatedWindow)
             updatedWindow.forEach { e ->
                 if (e.status != fusedStatus) {
