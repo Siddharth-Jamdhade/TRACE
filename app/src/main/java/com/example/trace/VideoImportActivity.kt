@@ -39,9 +39,10 @@ class VideoImportActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityVideoImportBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        supportActionBar?.title = "TRACE -- Analyse Videos"
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
+        // No toolbar on this screen yet: the layout carries its own "ANALYSE VIDEOS"
+        // header and it has no options menu, so the old supportActionBar calls were
+        // silent no-ops. A real app bar arrives with Stage 5.
         database = TraceDatabase.getInstance(this)
 
         binding.btnPickVideos.setOnClickListener { pickVideos.launch("video/*") }

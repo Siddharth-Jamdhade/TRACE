@@ -1,12 +1,12 @@
 package com.example.trace
 
-import android.graphics.Color
 import android.media.MediaPlayer
 import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import com.example.trace.databinding.ActivityEventDetailBinding
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -45,6 +45,8 @@ class EventDetailActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityEventDetailBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        // The theme is NoActionBar, so the title and back arrow need a real toolbar.
+        setSupportActionBar(binding.toolbar)
         supportActionBar?.title = "Event Detail"
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
@@ -86,11 +88,13 @@ class EventDetailActivity : AppCompatActivity() {
 
     private fun renderEvent(e: Event, singleValid: Boolean, chainValid: Boolean) {
         // Status banner
+        // Fixed semantic colours, deliberately not theme attributes: a CONFIRMED
+        // incident has to stay green whatever wallpaper palette is active.
         val statusColor = when (e.status) {
-            "CONFIRMED"   -> Color.parseColor("#1B5E20")
-            "UNCONFIRMED" -> Color.parseColor("#E65100")
-            "REJECTED"    -> Color.parseColor("#B71C1C")
-            else          -> Color.parseColor("#263238")
+            "CONFIRMED"   -> ContextCompat.getColor(this, R.color.trace_status_confirmed_surface)
+            "UNCONFIRMED" -> ContextCompat.getColor(this, R.color.trace_status_unconfirmed_surface)
+            "REJECTED"    -> ContextCompat.getColor(this, R.color.trace_status_rejected_surface)
+            else          -> ContextCompat.getColor(this, R.color.trace_status_unknown_surface)
         }
         binding.statusCard.setBackgroundColor(statusColor)
         binding.tvStatus.text    = e.status
@@ -145,7 +149,8 @@ class EventDetailActivity : AppCompatActivity() {
             else
                 "Integrity: INVALID - record may have been tampered"
             binding.tvHashStatus.setTextColor(
-                if (overallOk) Color.parseColor("#00C853") else Color.parseColor("#D50000")
+                if (overallOk) ContextCompat.getColor(this, R.color.trace_integrity_ok)
+                else ContextCompat.getColor(this, R.color.trace_integrity_broken)
             )
             binding.tvHashValue.text = "SHA-256: ${e.hash.take(20)}..."
         } else {

@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#0D1117"
+    android:background="?attr/colorSurface"
     android:padding="20dp">
 
     <TextView
@@ -12,20 +12,20 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="🔒 EVIDENCE LOCKED — video import is disabled"
-        android:textColor="#000000"
+        android:textColor="@color/trace_on_error"
         android:textStyle="bold"
         android:textSize="13sp"
         android:fontFamily="monospace"
         android:gravity="center"
         android:padding="10dp"
-        android:background="#F85149"
+        android:background="@color/trace_status_rejected"
         android:visibility="gone" />
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="ANALYSE VIDEOS"
-        android:textColor="#00E676"
+        android:textColor="?attr/colorPrimary"
         android:textSize="13sp"
         android:letterSpacing="0.15"
         android:fontFamily="monospace"
@@ -35,7 +35,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Select one or more videos. TRACE will extract events every 5 seconds using on-device AI and place them on the global timeline in the correct chronological order."
-        android:textColor="#8B949E"
+        android:textColor="?attr/colorOnSurfaceVariant"
         android:textSize="13sp"
         android:lineSpacingExtra="4dp"
         android:paddingBottom="20dp" />
@@ -45,11 +45,11 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Pick Videos from Gallery"
-        android:backgroundTint="#1A1A2E"
-        android:textColor="#00E676"
-        app:strokeColor="#00E676"
+        android:backgroundTint="@color/trace_surface_elevated"
+        android:textColor="?attr/colorPrimary"
+        app:strokeColor="?attr/colorPrimary"
         app:strokeWidth="1dp"
-        style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+        style="@style/Widget.Material3.Button.OutlinedButton" />
 
     <TextView
         android:id="@+id/tvFileList"
@@ -57,8 +57,8 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
         android:padding="10dp"
-        android:background="#111111"
-        android:textColor="#8B949E"
+        android:background="?attr/colorSurfaceVariant"
+        android:textColor="?attr/colorOnSurfaceVariant"
         android:textSize="12sp"
         android:fontFamily="monospace"
         android:minLines="3"
@@ -70,8 +70,8 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
         android:text="ANALYSE &amp; ADD TO TIMELINE"
-        android:backgroundTint="#00E676"
-        android:textColor="#000000"
+        android:backgroundTint="?attr/colorPrimary"
+        android:textColor="?attr/colorOnPrimary"
         android:textStyle="bold" />
 
     <ProgressBar
@@ -80,7 +80,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:progressTint="#00E676"
+        android:progressTint="?attr/colorPrimary"
         android:max="100"
         android:progress="0"
         android:visibility="gone" />
@@ -90,7 +90,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
-        android:textColor="#CCCCCC"
+        android:textColor="?attr/colorOnSurface"
         android:textSize="13sp"
         android:fontFamily="monospace"
         android:text="Ready." />

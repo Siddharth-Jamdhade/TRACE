@@ -1,10 +1,82 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="purple_200">#FFBB86FC</color>
-    <color name="purple_500">#FF6200EE</color>
-    <color name="purple_700">#FF3700B3</color>
-    <color name="teal_200">#FF03DAC5</color>
-    <color name="teal_700">#FF018786</color>
-    <color name="black">#FF000000</color>
-    <color name="white">#FFFFFFFF</color>
+    <!--
+      TRACE palette, in two parts.
+
+      1. BRAND ROLES — named after Material 3 colour roles. These are what
+         Theme.TRACE maps onto colorPrimary/colorSurface/..., so on Android 12+
+         the Material You overlay can replace them with the user's wallpaper
+         palette. The values deliberately mirror the hex literals the layouts used
+         before this theme existed, so on Android 11 and below — where no dynamic
+         palette exists — the UI renders exactly as it always did.
+
+      2. FIXED SEMANTIC COLOURS — never mapped to theme attributes and never
+         replaced by the wallpaper. "Green means confirmed" and "red means
+         rejected" have to survive whatever palette the user has, so status and
+         sensor-legend colours are referenced directly.
+    -->
+
+    <!-- Brand roles -->
+    <color name="trace_primary">#00E676</color>
+    <color name="trace_on_primary">#000000</color>
+    <color name="trace_primary_container">#00401F</color>
+    <color name="trace_on_primary_container">#6CFFA5</color>
+    <color name="trace_secondary">#58A6FF</color>
+    <color name="trace_on_secondary">#001B33</color>
+    <color name="trace_secondary_container">#12314C</color>
+    <color name="trace_on_secondary_container">#CFE4FF</color>
+    <color name="trace_tertiary">#FFD600</color>
+    <color name="trace_on_tertiary">#2A2100</color>
+    <color name="trace_tertiary_container">#4A3D00</color>
+    <color name="trace_on_tertiary_container">#FFE680</color>
+    <color name="trace_error">#F85149</color>
+    <color name="trace_on_error">#000000</color>
+    <color name="trace_error_container">#7A1D19</color>
+    <color name="trace_on_error_container">#FFDAD6</color>
+
+    <!-- Surfaces and text -->
+    <color name="trace_surface">#0D1117</color>
+    <color name="trace_on_surface">#E6EDF3</color>
+    <color name="trace_surface_variant">#161B22</color>
+    <color name="trace_on_surface_variant">#8B949E</color>
+    <color name="trace_surface_container">#161B22</color>
+    <color name="trace_surface_container_high">#21262D</color>
+    <color name="trace_surface_elevated">#1A1A2E</color>
+    <color name="trace_outline">#30363D</color>
+    <color name="trace_outline_variant">#21262D</color>
+    <color name="trace_text_hint">#484F58</color>
+    <color name="trace_inverse_surface">#E6EDF3</color>
+    <color name="trace_inverse_on_surface">#161B22</color>
+    <color name="trace_inverse_primary">#00C853</color>
+
+    <!--
+      Fixed by design: the camera viewfinder is black and the HUD sits on top of
+      live video, so these must stay dark whatever palette is active.
+    -->
+    <color name="trace_camera_backdrop">#000000</color>
+    <color name="trace_scrim">#CC0D1117</color>
+
+    <!-- Fixed semantic: incident status -->
+    <color name="trace_status_confirmed">#00E676</color>
+    <color name="trace_status_confirmed_surface">#1B5E20</color>
+    <color name="trace_status_unconfirmed">#FFD600</color>
+    <color name="trace_status_unconfirmed_surface">#E65100</color>
+    <color name="trace_status_rejected">#F85149</color>
+    <color name="trace_status_rejected_surface">#B71C1C</color>
+    <color name="trace_status_unknown">#484F58</color>
+    <color name="trace_status_unknown_surface">#263238</color>
+
+    <!-- Fixed semantic: hash-chain integrity -->
+    <color name="trace_integrity_ok">#00C853</color>
+    <color name="trace_integrity_broken">#D50000</color>
+
+    <!--
+      Fixed semantic: the live sensor legend. Camera is blue, audio red, motion
+      green — a legend only works if its colours never change, so these are not
+      theme attributes either.
+    -->
+    <color name="trace_sensor_icon">#607D8B</color>
+    <color name="trace_sensor_camera">#58A6FF</color>
+    <color name="trace_sensor_audio">#F85149</color>
+    <color name="trace_sensor_motion">#00E676</color>
 </resources>

@@ -1,8 +1,8 @@
 package com.example.trace
 
-import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
@@ -44,12 +44,18 @@ class EventAdapter(
             binding.tvSource.text    = "src: ${event.source}  |  ${"%.0f".format(event.confidence * 100)}%"
             binding.tvStatus.text    = event.status
 
-            val (stripColor, badgeTextColor) = when (event.status) {
-                "CONFIRMED"   -> Pair(Color.parseColor("#00E676"), Color.parseColor("#00E676"))
-                "UNCONFIRMED" -> Pair(Color.parseColor("#FFD600"), Color.parseColor("#FFD600"))
-                "REJECTED"    -> Pair(Color.parseColor("#F85149"), Color.parseColor("#F85149"))
-                else          -> Pair(Color.parseColor("#484F58"), Color.parseColor("#484F58"))
+            // Fixed semantic colours — a status badge must not change colour with
+            // the user's wallpaper palette.
+            val statusColorRes = when (event.status) {
+                "CONFIRMED"   -> R.color.trace_status_confirmed
+                "UNCONFIRMED" -> R.color.trace_status_unconfirmed
+                "REJECTED"    -> R.color.trace_status_rejected
+                else          -> R.color.trace_status_unknown
             }
+            val (stripColor, badgeTextColor) = Pair(
+                ContextCompat.getColor(binding.root.context, statusColorRes),
+                ContextCompat.getColor(binding.root.context, statusColorRes)
+            )
 
             binding.statusStrip.setBackgroundColor(stripColor)
             binding.tvStatus.setTextColor(badgeTextColor)

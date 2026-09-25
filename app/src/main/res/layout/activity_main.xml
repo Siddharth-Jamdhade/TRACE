@@ -4,7 +4,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000">
+    android:background="@color/trace_camera_backdrop">
 
     <!-- Full-screen camera preview -->
     <androidx.camera.view.PreviewView
@@ -21,7 +21,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:background="#CC0D1117"
+        android:background="@color/trace_scrim"
         android:paddingStart="16dp"
         android:paddingEnd="16dp"
         android:paddingTop="12dp"
@@ -34,7 +34,7 @@
         <View
             android:layout_width="match_parent"
             android:layout_height="2dp"
-            android:background="#00E676"
+            android:background="?attr/colorPrimary"
             android:layout_marginBottom="8dp" />
 
         <!-- FEATURE A: Live Sensor Confidence Row -->
@@ -50,7 +50,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="📷 --"
-                android:textColor="#58A6FF"
+                android:textColor="@color/trace_sensor_camera"
                 android:textSize="11sp"
                 android:fontFamily="monospace"
                 android:gravity="center" />
@@ -61,7 +61,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="🔊 --"
-                android:textColor="#F85149"
+                android:textColor="@color/trace_sensor_audio"
                 android:textSize="11sp"
                 android:fontFamily="monospace"
                 android:gravity="center" />
@@ -72,7 +72,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="📳 --"
-                android:textColor="#00E676"
+                android:textColor="@color/trace_sensor_motion"
                 android:textSize="11sp"
                 android:fontFamily="monospace"
                 android:gravity="center" />
@@ -83,7 +83,7 @@
             android:id="@+id/statusText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textColor="#E6EDF3"
+            android:textColor="?attr/colorOnSurface"
             android:textSize="13sp"
             android:fontFamily="monospace"
             android:lineSpacingExtra="4dp"
@@ -103,10 +103,10 @@
                 android:layout_weight="1"
                 android:layout_marginEnd="6dp"
                 android:text="Timeline"
-                android:textColor="#000000"
+                android:textColor="?attr/colorOnPrimary"
                 android:textStyle="bold"
                 android:textSize="13sp"
-                android:backgroundTint="#00E676" />
+                android:backgroundTint="?attr/colorPrimary" />
 
             <Button
                 android:id="@+id/btnAnalyseVideo"
@@ -115,9 +115,9 @@
                 android:layout_weight="1"
                 android:layout_marginStart="6dp"
                 android:text="Analyse Video"
-                android:textColor="#00E676"
+                android:textColor="?attr/colorPrimary"
                 android:textSize="13sp"
-                android:backgroundTint="#1A1A2E" />
+                android:backgroundTint="@color/trace_surface_elevated" />
 
         </LinearLayout>
     </LinearLayout>

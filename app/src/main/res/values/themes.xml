@@ -1,11 +1,51 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.TRACE" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <item name="colorPrimary">#00E676</item>
-        <item name="colorPrimaryVariant">#00C853</item>
-        <item name="colorOnPrimary">#000000</item>
-        <item name="colorSurface">#161B22</item>
-        <item name="colorOnSurface">#E6EDF3</item>
-        <item name="android:windowBackground">#0D1117</item>
+    <!--
+      TRACE — Material 3 theme.
+
+      Dark-only on purpose: every screen paints dark surfaces and the camera
+      viewfinder is black, so a light variant would need a full pass over five
+      layouts before it could honestly be offered.
+
+      On Android 12+ TraceApplication overlays Material You (the user's wallpaper
+      palette) through DynamicColors. The TRACE palette mapped here is what
+      Android 11 and below sees, and what you get when the wallpaper palette is
+      pinned off.
+    -->
+    <style name="Theme.TRACE" parent="Theme.Material3.Dark.NoActionBar">
+
+        <!-- Brand -->
+        <item name="colorPrimary">@color/trace_primary</item>
+        <item name="colorOnPrimary">@color/trace_on_primary</item>
+        <item name="colorPrimaryContainer">@color/trace_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/trace_on_primary_container</item>
+        <item name="colorSecondary">@color/trace_secondary</item>
+        <item name="colorOnSecondary">@color/trace_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/trace_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/trace_on_secondary_container</item>
+        <item name="colorTertiary">@color/trace_tertiary</item>
+        <item name="colorOnTertiary">@color/trace_on_tertiary</item>
+        <item name="colorTertiaryContainer">@color/trace_tertiary_container</item>
+        <item name="colorOnTertiaryContainer">@color/trace_on_tertiary_container</item>
+        <item name="colorError">@color/trace_error</item>
+        <item name="colorOnError">@color/trace_on_error</item>
+        <item name="colorErrorContainer">@color/trace_error_container</item>
+        <item name="colorOnErrorContainer">@color/trace_on_error_container</item>
+
+        <!-- Surfaces and text -->
+        <item name="colorSurface">@color/trace_surface</item>
+        <item name="colorOnSurface">@color/trace_on_surface</item>
+        <item name="colorSurfaceVariant">@color/trace_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/trace_on_surface_variant</item>
+        <item name="colorSurfaceInverse">@color/trace_inverse_surface</item>
+        <item name="colorOnSurfaceInverse">@color/trace_inverse_on_surface</item>
+        <item name="colorPrimaryInverse">@color/trace_inverse_primary</item>
+        <item name="colorOutline">@color/trace_outline</item>
+        <item name="colorOutlineVariant">@color/trace_outline_variant</item>
+        <item name="colorOnBackground">@color/trace_on_surface</item>
+        <item name="android:colorBackground">@color/trace_surface</item>
+        <item name="android:windowBackground">@color/trace_surface</item>
+        <item name="android:statusBarColor">@color/trace_surface</item>
+        <item name="android:navigationBarColor">@color/trace_surface</item>
     </style>
 </resources>

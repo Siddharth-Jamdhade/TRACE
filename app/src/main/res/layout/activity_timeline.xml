@@ -1,9 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#0D1117">
+    android:background="?attr/colorSurface">
+
+    <!--
+      Without this toolbar the theme has no action bar at all, which is why
+      TimelineActivity's options menu (Refresh / Export JSON / Delete All) never
+      appeared anywhere and was unreachable.
+    -->
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorSurfaceVariant"
+        app:titleTextColor="?attr/colorPrimary"
+        app:navigationIconTint="?attr/colorPrimary" />
 
     <!-- FEATURE C: Locked banner (hidden by default) -->
     <TextView
@@ -11,13 +25,13 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="🔒 EVIDENCE LOCKED — No new events will be recorded"
-        android:textColor="#000000"
+        android:textColor="@color/trace_on_error"
         android:textStyle="bold"
         android:textSize="13sp"
         android:fontFamily="monospace"
         android:gravity="center"
         android:padding="10dp"
-        android:background="#F85149"
+        android:background="@color/trace_status_rejected"
         android:visibility="gone" />
 
     <!-- Query bar -->
@@ -26,7 +40,7 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:padding="10dp"
-        android:background="#161B22">
+        android:background="?attr/colorSurfaceVariant">
 
         <EditText
             android:id="@+id/queryInput"
@@ -34,15 +48,15 @@
             android:layout_height="44dp"
             android:layout_weight="1"
             android:hint="Ask: what happened before the fall?"
-            android:textColor="#E6EDF3"
-            android:textColorHint="#484F58"
+            android:textColor="?attr/colorOnSurface"
+            android:textColorHint="@color/trace_text_hint"
             android:textSize="13sp"
             android:inputType="text"
             android:imeOptions="actionDone"
             android:singleLine="true"
             android:paddingStart="12dp"
             android:paddingEnd="12dp"
-            android:background="#21262D"
+            android:background="@color/trace_surface_container_high"
             android:layout_marginEnd="8dp" />
 
         <Button
@@ -50,9 +64,9 @@
             android:layout_width="wrap_content"
             android:layout_height="44dp"
             android:text="ASK"
-            android:textColor="#000000"
+            android:textColor="?attr/colorOnPrimary"
             android:textStyle="bold"
-            android:backgroundTint="#00E676"
+            android:backgroundTint="?attr/colorPrimary"
             android:textSize="12sp" />
 
     </LinearLayout>
@@ -63,11 +77,11 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:padding="12dp"
-        android:textColor="#8B949E"
+        android:textColor="?attr/colorOnSurfaceVariant"
         android:fontFamily="monospace"
         android:textSize="12sp"
         android:lineSpacingExtra="3dp"
-        android:background="#161B22"
+        android:background="?attr/colorSurfaceVariant"
         android:visibility="gone" />
 
     <!-- Section label + Lock button row -->
@@ -85,7 +99,7 @@
             android:paddingTop="10dp"
             android:paddingBottom="6dp"
             android:text="INCIDENT TIMELINE"
-            android:textColor="#00E676"
+            android:textColor="?attr/colorPrimary"
             android:textSize="10sp"
             android:letterSpacing="0.15"
             android:fontFamily="monospace" />
@@ -98,10 +112,10 @@
             android:layout_marginEnd="10dp"
             android:layout_marginTop="4dp"
             android:text="🔒 LOCK"
-            android:textColor="#F85149"
+            android:textColor="@color/trace_status_rejected"
             android:textSize="11sp"
             android:textStyle="bold"
-            android:backgroundTint="#1A1A2E"
+            android:backgroundTint="@color/trace_surface_elevated"
             android:paddingStart="12dp"
             android:paddingEnd="12dp" />
 

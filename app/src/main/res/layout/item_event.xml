@@ -8,10 +8,10 @@
     android:layout_marginEnd="12dp"
     android:layout_marginTop="4dp"
     android:layout_marginBottom="4dp"
-    app:cardBackgroundColor="#161B22"
+    app:cardBackgroundColor="?attr/colorSurfaceVariant"
     app:cardCornerRadius="10dp"
     app:cardElevation="4dp"
-    app:strokeColor="#21262D"
+    app:strokeColor="?attr/colorOutlineVariant"
     app:strokeWidth="1dp">
 
     <LinearLayout
@@ -27,7 +27,7 @@
             android:layout_width="5dp"
             android:layout_height="match_parent"
             android:layout_marginEnd="14dp"
-            android:background="#607D8B" />
+            android:background="@color/trace_sensor_icon" />
 
         <!-- Icon + Event info -->
         <LinearLayout
@@ -55,7 +55,7 @@
                     android:id="@+id/tvEventType"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:textColor="#E6EDF3"
+                    android:textColor="?attr/colorOnSurface"
                     android:textSize="14sp"
                     android:textStyle="bold"
                     android:text="Event type" />
@@ -65,7 +65,7 @@
                 android:id="@+id/tvTimestamp"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="#484F58"
+                android:textColor="@color/trace_text_hint"
                 android:textSize="11sp"
                 android:fontFamily="monospace"
                 android:layout_marginTop="2dp"
@@ -75,7 +75,7 @@
                 android:id="@+id/tvSource"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="#30363D"
+                android:textColor="?attr/colorOutline"
                 android:textSize="10sp"
                 android:layout_marginTop="2dp"
                 android:text="src: motion" />

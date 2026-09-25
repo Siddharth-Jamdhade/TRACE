@@ -49,6 +49,11 @@ class TimelineActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityTimelineBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // The theme is NoActionBar, so without a real toolbar the title, the back
+        // arrow and the options menu below would never be shown — which is why
+        // Export JSON and Delete All were previously unreachable.
+        setSupportActionBar(binding.toolbar)
         supportActionBar?.title = "TRACE -- Incident Timeline"
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
@@ -221,6 +226,7 @@ class TimelineActivity : AppCompatActivity() {
         menu.add(Menu.NONE, 1, 1, "Refresh")
         menu.add(Menu.NONE, 2, 2, "Export JSON (Office Kit)")
         menu.add(Menu.NONE, 3, 3, "Delete All Events")
+        menu.add(Menu.NONE, 4, 4, appearanceLabel())
         return true
     }
 
@@ -253,9 +259,30 @@ class TimelineActivity : AppCompatActivity() {
                     .show()
                 true
             }
+            4 -> {
+                val useWallpaper = !TraceAppearance.useWallpaperPalette(this)
+                TraceAppearance.setUseWallpaperPalette(this, useWallpaper)
+                Toast.makeText(
+                    this,
+                    if (useWallpaper) "Palette: wallpaper colours" else "Palette: TRACE green",
+                    Toast.LENGTH_SHORT
+                ).show()
+                recreate()
+                true
+            }
             else -> super.onOptionsItemSelected(item)
         }
     }
+
+    /**
+     * Label for the palette switch.
+     *
+     * Temporary home: Stage 6 moves this into Settings, which is where the
+     * preference already lives (see [TraceAppearance]).
+     */
+    private fun appearanceLabel(): String =
+        if (TraceAppearance.useWallpaperPalette(this)) "Appearance: wallpaper colours"
+        else "Appearance: TRACE palette"
 
     override fun onDestroy() {
         super.onDestroy()

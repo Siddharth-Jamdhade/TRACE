@@ -172,8 +172,21 @@ app/src/main/
     ├── drawable/
     │   └── status_pill.xml            ← Rounded pill shape for status badge
     └── values/
-        └── themes.xml                 ← Cyberpunk palette: #00E676 / #0D1117
+        ├── themes.xml                 ← Material 3 theme (see Theming below)
+        └── colors.xml                 ← TRACE palette + fixed semantic colours
 ```
+
+### Theming (Material 3)
+
+`Theme.TRACE` extends `Theme.Material3.Dark.NoActionBar`, and is dark-only on purpose: every screen paints dark surfaces and the camera viewfinder is black, so a light variant would need a full pass over five layouts before it could honestly be offered.
+
+| Layer | Behaviour |
+|-------|-----------|
+| **Android 12+** | Material You — `DynamicColors` re-tints the app from the user's wallpaper (`TraceApplication`) |
+| **Android 7–11** | No dynamic palette exists, so the TRACE palette in `colors.xml` is used. Those values are the exact hex the UI used before the theme existed, so the fallback renders identically |
+| **Palette switch** | Timeline overflow → *Appearance* pins the TRACE palette instead of the wallpaper (moves into Settings later) |
+
+**Semantic colours are deliberately not theme attributes.** Green = `CONFIRMED`, amber = `UNCONFIRMED`, red = `REJECTED`, and the blue/red/green camera/audio/motion legend are fixed values in `colors.xml`. If they followed the wallpaper palette, a blue wallpaper would render "confirmed" blue and the sensor legend would mean something different on every phone. Everything palette-driven instead goes through `?attr/colorPrimary`, `?attr/colorSurface`, `?attr/colorOnSurface`, `?attr/colorOnSurfaceVariant`.
 
 ---
 
