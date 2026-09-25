@@ -76,8 +76,8 @@ Phone Sensors
 | File | Changes |
 |------|---------|
 | [`Event.kt`](file:///c:/Users/SIDDHARTH/AndroidStudioProjects/TRACE/app/src/main/java/com/example/trace/Event.kt) | +6 nullable fields: `cameraConfidence`, `audioConfidence`, `motionConfidence`, `evidenceClipPath`, `hash`, `previousHash` |
-| [`EventDao.kt`](file:///c:/Users/SIDDHARTH/AndroidStudioProjects/TRACE/app/src/main/java/com/example/trace/EventDao.kt) | +`@Update update()`, +`getEventById()`, +`getLastEvent()`, +`getEventsInWindow()` |
-| [`TraceDatabase.kt`](file:///c:/Users/SIDDHARTH/AndroidStudioProjects/TRACE/app/src/main/java/com/example/trace/TraceDatabase.kt) | Version 1→2, `.fallbackToDestructiveMigration()` |
+| [`EventDao.kt`](file:///c:/Users/SIDDHARTH/AndroidStudioProjects/TRACE/app/src/main/java/com/example/trace/EventDao.kt) | +`@Update update()`, +`getEventById()`, +`getChainTip()`, +`getEventsInWindow()` |
+| [`TraceDatabase.kt`](file:///c:/Users/SIDDHARTH/AndroidStudioProjects/TRACE/app/src/main/java/com/example/trace/TraceDatabase.kt) | Version 2→3, explicit `MIGRATION_2_3` — destructive fallback removed |
 | [`EventExtractor.kt`](file:///c:/Users/SIDDHARTH/AndroidStudioProjects/TRACE/app/src/main/java/com/example/trace/EventExtractor.kt) | Added `"camera"` source: `>0.75` → `"object_falls"`, `>0.50` → `"object_moves"` |
 | [`MainActivity.kt`](file:///c:/Users/SIDDHARTH/AndroidStudioProjects/TRACE/app/src/main/java/com/example/trace/MainActivity.kt) | Full refactor: ViewBinding, ImageAnalysis frame-differencing, FusionEngine, HashChain, evidence clip saving, ConcurrentHashMap cooldown, `onPause`/`onResume` sensor lifecycle fix |
 | [`activity_main.xml`](file:///c:/Users/SIDDHARTH/AndroidStudioProjects/TRACE/app/src/main/res/layout/activity_main.xml) | Added green `btnTimeline` button |
@@ -143,5 +143,5 @@ Open Logcat in Android Studio, filter tag `TRACE`. Then:
 
 1. **Evidence clips are audio-only** (.3gp) — the "clip" is a copy of the MediaRecorder buffer at the moment of detection. It captures ambient sound but not a video frame. Full video clips would require a separate `VideoCapture` use-case.
 2. **Fusion is retroactive but not real-time** — when a second sensor fires, previous events in the window are updated to CONFIRMED, but the Timeline screen needs a manual Refresh to show the new status.
-3. **Database wiped on first launch** after this update (schema version 1→2 migration is destructive). Normal for prototype.
-4. **Hash chain race** — if two sensors fire within milliseconds, both coroutines may read the same "last hash". The chain will still be a valid chain but may have two events with the same `previousHash`. Acceptable for demo.
+3. **Schema migrations are now real** — `fallbackToDestructiveMigration()` has been removed and v2 → v3 migrates in place. A missing migration fails loudly instead of silently deleting evidence.
+4. **Hash chain race is fixed** — every write goes through `ChainWriter`, which serialises read-tip → insert → hash → update behind a mutex, so simultaneous sensor events can no longer fork the chain.

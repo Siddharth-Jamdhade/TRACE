@@ -34,7 +34,7 @@ import java.util.Locale
  * Options menu:
  *   Refresh        -- reload from DB
  *   Export JSON    -- write events.json to Downloads and open Share sheet
- *   Clear All      -- wipe the DB (ask before demo!)
+ *   Delete All     -- wipe the DB, after an explicit confirmation
  */
 class TimelineActivity : AppCompatActivity() {
 
@@ -71,8 +71,7 @@ class TimelineActivity : AppCompatActivity() {
         }
 
         // Feature C: Lock Evidence button
-        val prefs = getSharedPreferences("trace_prefs", MODE_PRIVATE)
-        val alreadyLocked = prefs.getBoolean("evidence_locked", false)
+        val alreadyLocked = EvidenceLock.isLocked(this)
         if (alreadyLocked) {
             binding.tvLockedBanner.visibility = View.VISIBLE
             binding.btnLockEvidence.isEnabled = false
@@ -84,7 +83,7 @@ class TimelineActivity : AppCompatActivity() {
                 .setTitle("🔒 Lock Evidence?")
                 .setMessage("This will permanently stop recording new events. The current timeline will be sealed and cannot be modified.\n\nProceed?")
                 .setPositiveButton("LOCK IT") { _, _ ->
-                    prefs.edit().putBoolean("evidence_locked", true).apply()
+                    EvidenceLock.setLocked(this@TimelineActivity, true)
                     binding.tvLockedBanner.visibility = View.VISIBLE
                     binding.btnLockEvidence.isEnabled = false
                     binding.btnLockEvidence.text = "🔒 LOCKED"
@@ -221,7 +220,7 @@ class TimelineActivity : AppCompatActivity() {
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menu.add(Menu.NONE, 1, 1, "Refresh")
         menu.add(Menu.NONE, 2, 2, "Export JSON (Office Kit)")
-        menu.add(Menu.NONE, 3, 3, "Clear All Events")
+        menu.add(Menu.NONE, 3, 3, "Delete All Events")
         return true
     }
 
@@ -231,15 +230,27 @@ class TimelineActivity : AppCompatActivity() {
             1 -> { loadEvents(); true }
             2 -> { exportJson(); true }
             3 -> {
-                scope.launch {
-                    database.eventDao().clearAll()
-                    withContext(Dispatchers.Main) {
-                        adapter.submitList(emptyList())
-                        binding.queryAnswer.text = "All events cleared."
-                        binding.queryAnswer.visibility = View.VISIBLE
-                        Toast.makeText(this@TimelineActivity, "Timeline cleared", Toast.LENGTH_SHORT).show()
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Delete all evidence?")
+                    .setMessage(
+                        "Every recorded event is permanently deleted and the " +
+                            "tamper-evidence chain is broken.\n\n" +
+                            "This cannot be undone — export the timeline first if you " +
+                            "need a copy."
+                    )
+                    .setPositiveButton("DELETE ALL") { _, _ ->
+                        scope.launch {
+                            database.eventDao().clearAll()
+                            withContext(Dispatchers.Main) {
+                                adapter.submitList(emptyList())
+                                binding.queryAnswer.text = "All events deleted."
+                                binding.queryAnswer.visibility = View.VISIBLE
+                                Toast.makeText(this@TimelineActivity, "Timeline deleted", Toast.LENGTH_SHORT).show()
+                            }
+                        }
                     }
-                }
+                    .setNegativeButton("Cancel", null)
+                    .show()
                 true
             }
             else -> super.onOptionsItemSelected(item)

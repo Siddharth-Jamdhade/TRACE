@@ -40,13 +40,19 @@ object HashChain {
     }
 
     /**
-     * Verifies the full chain sorted by timestamp.
+     * Verifies the full chain in append order.
+     *
+     * Ordering is by [Event.id] (insertion order), NOT timestamp. The chain
+     * links to whichever event was appended immediately before it, and an
+     * imported video can legitimately contribute an event whose timestamp is
+     * older than events already stored.
+     *
      * Returns false as soon as any hash does not match.
      */
     fun verifyChain(events: List<Event>): Boolean {
         if (events.isEmpty()) return true
         var prevHash = GENESIS_HASH
-        for (event in events.sortedBy { it.timestamp }) {
+        for (event in events.sortedBy { it.id }) {
             val expected = computeHash(event, prevHash)
             if (event.hash != expected) return false
             prevHash = event.hash ?: return false

@@ -25,8 +25,16 @@ interface EventDao {
     @Query("SELECT * FROM events WHERE id = :eventId LIMIT 1")
     suspend fun getEventById(eventId: Long): Event?
 
-    @Query("SELECT * FROM events ORDER BY timestamp DESC LIMIT 1")
-    suspend fun getLastEvent(): Event?
+    /**
+     * The most recently *inserted* event — the current chain tip.
+     *
+     * Deliberately ordered by id, not timestamp: the chain records the order in
+     * which TRACE appended evidence. Video import can contribute an event whose
+     * timestamp is older than the current tip, and ordering by timestamp would
+     * then link the new event to a row that does not actually precede it.
+     */
+    @Query("SELECT * FROM events ORDER BY id DESC LIMIT 1")
+    suspend fun getChainTip(): Event?
 
     @Query("UPDATE events SET status = :newStatus WHERE id = :eventId")
     suspend fun updateStatus(eventId: Long, newStatus: String)

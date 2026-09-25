@@ -8,6 +8,20 @@
     android:padding="20dp">
 
     <TextView
+        android:id="@+id/tvLockedBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="🔒 EVIDENCE LOCKED — video import is disabled"
+        android:textColor="#000000"
+        android:textStyle="bold"
+        android:textSize="13sp"
+        android:fontFamily="monospace"
+        android:gravity="center"
+        android:padding="10dp"
+        android:background="#F85149"
+        android:visibility="gone" />
+
+    <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="ANALYSE VIDEOS"

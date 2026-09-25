@@ -55,7 +55,7 @@ Every sensor below feeds the same Observation → EventExtractor → FusionEngin
 | 🔄 **Gyroscope** | Angular velocity — a device tumbling off a shelf spins on multiple axes | `device_falls`, `device_motion` |
 | 👣 **Step Detector** | One signal per footstep — implies a person near the phone | `person_present` (context) |
 | 🚶 **Significant Motion** | Hardware activity trigger — device was moved in a notable way | `person_present` (context) |
-| 📳 **Vibration motor** | *Actuator, not a sensor:* haptic pulse when an incident is CONFIRMED | feedback only |
+| 🔇 **Vibration / sound** | *Intentionally unused:* TRACE stays completely silent during a live session — a CONFIRMED incident never triggers a sound or a haptic pulse | — |
 
 **Context signals** (`pressure_shift`, `lights_off`, `person_present`) rarely reach the >60% confidence needed to count toward CONFIRMED on their own — they enrich the reconstruction timeline (e.g. footsteps + lights-off + alarm tells a story) rather than drive verdicts.
 

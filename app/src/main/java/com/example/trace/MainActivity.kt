@@ -14,9 +14,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
 import android.util.Log
 import android.util.Size
 import android.view.WindowManager
@@ -97,7 +94,8 @@ class MainActivity : AppCompatActivity() {
     // ── Extended sensor array (magnetometer, barometer, light, linear, gyro,
     //    step, sigmotion). All feed the same Observation pipeline.
     private val baseline = RollingBaseline()
-    private lateinit var hapticListener: SensorEventListener
+    /** Magnetometer listener — steel doors and large metal objects near the phone. */
+    private lateinit var magnetListener: SensorEventListener
     private lateinit var baroListener: SensorEventListener
     private lateinit var linearListener: SensorEventListener
     private lateinit var gyroListener: SensorEventListener
@@ -110,14 +108,16 @@ class MainActivity : AppCompatActivity() {
     private val cameraExecutor = Executors.newSingleThreadExecutor()
 
     // ── Feature C: Evidence Lock ──────────────────────────────────────────
-    // Shared with TimelineActivity via SharedPreferences key "evidence_locked"
+    // Shared with TimelineActivity + VideoImportActivity via [EvidenceLock].
     private val evidenceLocked = AtomicBoolean(false)
-    private val PREFS_NAME     = "trace_prefs"
-    private val KEY_LOCKED     = "evidence_locked"
 
     // ── Feature B: Notifications ──────────────────────────────────────────
-    private val NOTIF_CHANNEL_ID = "trace_confirmed"
-    private var notifId          = 1000
+    // Silent channel — see onCreate. The ID changed from "trace_confirmed"
+    // because a channel's sound/vibration settings are immutable after
+    // creation, so a fresh ID is the only way to make an existing install quiet.
+    private val NOTIF_CHANNEL_ID        = "trace_alerts_v2"
+    private val LEGACY_NOTIF_CHANNEL_ID = "trace_confirmed"
+    private var notifId                 = 1000
 
     // ── Tuning constants ─────────────────────────────────────────────
     // Motion: idle jerk < 1. A firm tap peaks ~5, a hard shake ~15-25.
@@ -182,22 +182,31 @@ class MainActivity : AppCompatActivity() {
 
         database = TraceDatabase.getInstance(this)
 
-        // Feature C: restore lock state from SharedPreferences (survives app restart)
-        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-        evidenceLocked.set(prefs.getBoolean(KEY_LOCKED, false))
+        // Feature C: restore lock state (survives app restart)
+        evidenceLocked.set(EvidenceLock.isLocked(this))
 
-        // Feature B: Create notification channel (required on Android 8+)
+        // Feature B: notification channel (required on Android 8+).
+        //
+        // TRACE must never make noise or vibrate during a live session, so this
+        // channel is silent: no sound, no vibration, no lights, and IMPORTANCE_LOW
+        // so it never takes over the screen. The channel stays in place because a
+        // foreground-service notification will need it once background capture
+        // exists (Stage 3+).
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val notificationManager = getSystemService(NotificationManager::class.java)
             val channel = NotificationChannel(
                 NOTIF_CHANNEL_ID,
                 "TRACE Confirmed Events",
-                NotificationManager.IMPORTANCE_HIGH
+                NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Fires when TRACE confirms an incident via multi-sensor fusion"
-                enableVibration(true)
+                description = "Silent alert when TRACE confirms an incident via multi-sensor fusion"
+                setSound(null, null)
+                enableVibration(false)
+                enableLights(false)
             }
-            getSystemService(NotificationManager::class.java)
-                .createNotificationChannel(channel)
+            notificationManager.createNotificationChannel(channel)
+            // Retire the old noisy channel — its settings cannot be edited.
+            notificationManager.deleteNotificationChannel(LEGACY_NOTIF_CHANNEL_ID)
         }
 
         // Feature B: Request notification permission on Android 13+
@@ -285,8 +294,8 @@ class MainActivity : AppCompatActivity() {
             if (accel != null) {
                 sensorManager.registerListener(sensorListener, accel, SensorManager.SENSOR_DELAY_GAME)
             }
-            if (::hapticListener.isInitialized) {
-                registerIfAvailable(Sensor.TYPE_MAGNETIC_FIELD, hapticListener, SensorManager.SENSOR_DELAY_GAME)
+            if (::magnetListener.isInitialized) {
+                registerIfAvailable(Sensor.TYPE_MAGNETIC_FIELD, magnetListener, SensorManager.SENSOR_DELAY_GAME)
             }
             if (::linearListener.isInitialized) {
                 registerIfAvailable(Sensor.TYPE_LINEAR_ACCELERATION, linearListener, SensorManager.SENSOR_DELAY_GAME)
@@ -301,7 +310,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun unregisterExtendedListeners() {
         if (!extendedSensorsStarted) return
-        if (::hapticListener.isInitialized) sensorManager.unregisterListener(hapticListener)
+        if (::magnetListener.isInitialized) sensorManager.unregisterListener(magnetListener)
         if (::baroListener.isInitialized) sensorManager.unregisterListener(baroListener)
         if (::linearListener.isInitialized) sensorManager.unregisterListener(linearListener)
         if (::gyroListener.isInitialized) sensorManager.unregisterListener(gyroListener)
@@ -472,7 +481,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun startExtendedSensors() {
         extendedSensorsStarted = true
-        hapticListener = object : SensorEventListener {
+        magnetListener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
                 val magnitude = kotlin.math.sqrt(
                     event.values[0] * event.values[0] +
@@ -582,7 +591,7 @@ class MainActivity : AppCompatActivity() {
 
         // Register whatever hardware actually exists. Absent sensors simply
         // never emit Observations; fusion treats them like silent sensors.
-        registerIfAvailable(Sensor.TYPE_MAGNETIC_FIELD, hapticListener, SensorManager.SENSOR_DELAY_GAME)
+        registerIfAvailable(Sensor.TYPE_MAGNETIC_FIELD, magnetListener, SensorManager.SENSOR_DELAY_GAME)
 
         val barometer = sensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE)
         val lightSensor = sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT)
@@ -657,27 +666,19 @@ class MainActivity : AppCompatActivity() {
 
         appScope.launch {
 
-            // Step 0: capture previous chain tip BEFORE inserting new event
-            val prevLastEvent = database.eventDao().getLastEvent()
-            val prevHash      = prevLastEvent?.hash ?: HashChain.GENESIS_HASH
+            val windowStart = obs.timestamp - FusionEngine.FUSION_WINDOW_MS
+            val windowEnd   = obs.timestamp + FusionEngine.FUSION_WINDOW_MS
 
-            // Step 1: insert base event to obtain an auto-generated ID
-            val newId = database.eventDao().insert(baseEvent)
-
-            // Step 2: fetch all events in the 2-second fusion window around this event
-            val windowStart  = obs.timestamp - FusionEngine.FUSION_WINDOW_MS
-            val windowEnd    = obs.timestamp + FusionEngine.FUSION_WINDOW_MS
-            val windowEvents = database.eventDao().getEventsInWindow(windowStart, windowEnd)
-
-            // Step 3: build enriched event — fills per-sensor conf values + fused status
-            val enriched = FusionEngine.buildEnrichedEvent(baseEvent.copy(id = newId), windowEvents)
-
-            // Step 4: compute SHA-256 chain hash
-            val hash       = HashChain.computeHash(enriched, prevHash)
-            val finalEvent = enriched.copy(hash = hash, previousHash = prevHash)
-
-            // Step 5: persist enriched + hashed event
-            database.eventDao().update(finalEvent)
+            // Steps 0-5: insert, fuse and hash. ChainWriter serialises the whole
+            // read-tip → insert → hash → update sequence, so two sensors firing in
+            // the same millisecond queue up instead of forking the chain.
+            val finalEvent = ChainWriter.append(database.eventDao(), baseEvent) { inserted ->
+                FusionEngine.buildEnrichedEvent(
+                    inserted,
+                    database.eventDao().getEventsInWindow(windowStart, windowEnd)
+                )
+            }
+            val newId = finalEvent.id
 
             Log.d("TRACE", "EVENT SAVED: id=$newId type=$eventType status=${finalEvent.status}")
 
@@ -696,7 +697,6 @@ class MainActivity : AppCompatActivity() {
             if (finalEvent.status == "CONFIRMED") {
                 fireConfirmedNotification(eventType, finalEvent.cameraConfidence,
                     finalEvent.audioConfidence, finalEvent.motionConfidence)
-                runOnUiThread { vibrateOnConfirmed() }   // haptic feedback (actuator)
             }
 
             // Step 6: save a copy of the current audio clip as evidence (best-effort)
@@ -795,20 +795,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Must be called on UI thread. */
-    private fun vibrateOnConfirmed() {
-        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            (getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
-        } else {
-            @Suppress("DEPRECATION")
-            getSystemService(VIBRATOR_SERVICE) as Vibrator
-        }
-        vibrator.vibrate(VibrationEffect.createOneShot(120, VibrationEffect.DEFAULT_AMPLITUDE))
-    }
-
     // ── Feature B: CONFIRMED Push Notification ────────────────────────────
 
-    /** Fires a high-priority system notification when multi-sensor fusion confirms an incident. */
+    /**
+     * Fires a silent notification when multi-sensor fusion confirms an incident.
+     * No sound and no vibration by design — the on-screen status line is the
+     * in-app cue at this stage (a confirm banner lands in Stage 3).
+     */
     private fun fireConfirmedNotification(
         eventType: String,
         camConf: Float?,
@@ -829,7 +822,7 @@ class MainActivity : AppCompatActivity() {
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle(title)
             .setContentText(body)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setAutoCancel(true)
             .build()
 

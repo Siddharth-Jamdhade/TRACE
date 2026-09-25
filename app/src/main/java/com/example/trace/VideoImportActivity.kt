@@ -29,7 +29,7 @@ class VideoImportActivity : AppCompatActivity() {
         if (uris.isNotEmpty()) {
             pendingUris.clear()
             pendingUris.addAll(uris)
-            binding.tvStatus.text = " video(s) selected. Tap Analyse to begin."
+            binding.tvStatus.text = "${uris.size} video(s) selected. Tap Analyse to begin."
             binding.tvFileList.text = uris.joinToString("\n") { getFileName(it) }
             binding.btnAnalyse.isEnabled = true
         }
@@ -47,10 +47,28 @@ class VideoImportActivity : AppCompatActivity() {
         binding.btnPickVideos.setOnClickListener { pickVideos.launch("video/*") }
         binding.btnAnalyse.setOnClickListener { analyseAll() }
         binding.btnAnalyse.isEnabled = false
+
+        // Evidence Lock: importing video evidence after the timeline is sealed
+        // would append fresh rows to a chain the user declared final.
+        if (EvidenceLock.isLocked(this)) {
+            binding.tvLockedBanner.visibility = View.VISIBLE
+            binding.btnPickVideos.isEnabled = false
+            binding.btnAnalyse.isEnabled = false
+        }
     }
 
     private fun analyseAll() {
         if (pendingUris.isEmpty()) return
+
+        // Re-check the lock: it can be armed from the Timeline screen while this
+        // activity is already open.
+        if (EvidenceLock.isLocked(this)) {
+            Toast.makeText(this, "Evidence is locked — no new events can be imported.", Toast.LENGTH_LONG).show()
+            binding.tvLockedBanner.visibility = View.VISIBLE
+            binding.btnPickVideos.isEnabled = false
+            binding.btnAnalyse.isEnabled = false
+            return
+        }
 
         binding.btnPickVideos.isEnabled = false
         binding.btnAnalyse.isEnabled = false
@@ -70,7 +88,7 @@ class VideoImportActivity : AppCompatActivity() {
                 val name = getFileName(uri)
 
                 withContext(Dispatchers.Main) {
-                    binding.tvStatus.text = "Analysing video /: "
+                    binding.tvStatus.text = "Analysing video ${idx + 1}/${sorted.size}: $name"
                 }
 
                 val events = VideoAnalyzer.analyzeVideo(
@@ -83,14 +101,13 @@ class VideoImportActivity : AppCompatActivity() {
                     }
                 )
 
-                // Save every extracted event through the normal fusion+hash pipeline
+                // Save every extracted event through the normal fusion+hash pipeline.
+                // ChainWriter is the only writer allowed to touch the chain, so
+                // imported events link correctly alongside live sensor events.
                 for (event in events) {
-                    val prevLast  = database.eventDao().getLastEvent()
-                    val prevHash  = prevLast?.hash ?: HashChain.GENESIS_HASH
-                    val newId     = database.eventDao().insert(event)
-                    val enriched  = FusionEngine.buildEnrichedEvent(event.copy(id = newId), listOf(event.copy(id = newId)))
-                    val hash      = HashChain.computeHash(enriched, prevHash)
-                    database.eventDao().update(enriched.copy(hash = hash, previousHash = prevHash))
+                    ChainWriter.append(database.eventDao(), event) { inserted ->
+                        FusionEngine.buildEnrichedEvent(inserted, listOf(inserted))
+                    }
                 }
 
                 totalEvents += events.size
@@ -98,11 +115,11 @@ class VideoImportActivity : AppCompatActivity() {
 
             withContext(Dispatchers.Main) {
                 binding.progressBar.visibility = View.GONE
-                binding.tvStatus.text = "Done! Extracted  events from  video(s)."
+                binding.tvStatus.text = "Done! Extracted $totalEvents events from ${sorted.size} video(s)."
                 binding.btnPickVideos.isEnabled = true
                 Toast.makeText(
                     this@VideoImportActivity,
-                    "Added  events to TRACE timeline",
+                    "Added $totalEvents events to TRACE timeline",
                     Toast.LENGTH_LONG
                 ).show()
             }

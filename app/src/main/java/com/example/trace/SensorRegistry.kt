@@ -19,8 +19,9 @@ package com.example.trace
  *     gyroscope + linear-acceleration signals which carry the dynamics.
  *   - Wi-Fi / Bluetooth RSSI: seconds-scale scans, poor spatial resolution,
  *     and heavy permission burden for near-zero demo value.
- *   - Vibration motor: an actuator, used for CONFIRMED-event feedback
- *     (see MainActivity.vibrateOnConfirmed), not an evidence source.
+ *   - Vibration motor: an actuator, deliberately NOT used. TRACE must stay
+ *     silent during a live session, so CONFIRMED incidents give no haptic
+ *     feedback at all.
  */
 object SensorRegistry {
 
