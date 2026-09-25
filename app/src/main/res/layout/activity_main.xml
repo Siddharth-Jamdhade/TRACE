@@ -187,10 +187,64 @@
 
         </LinearLayout>
 
+        <!--
+          FEATURE: Live session log tail (bottom quarter).
+
+          A runtime transcript of this screen — recorded events, operator tags,
+          lifecycle and capture errors — newest at the bottom, next to the
+          action buttons. It is NOT evidence: the hash-chained database is, and
+          this buffer is rebuilt from it whenever the screen re-attaches to a
+          running session. See SessionLog.
+        -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="4dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="SESSION LOG"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="10sp"
+                android:letterSpacing="0.14"
+                android:textStyle="bold" />
+
+            <Space
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <TextView
+                android:id="@+id/tvLogCount"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0 events"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="10sp"
+                android:fontFamily="monospace" />
+
+        </LinearLayout>
+
+        <!--
+          Fixed height, not weight: the HUD is wrap_content, so the tail must
+          size itself. ~6 rows at the 11sp line height — a tail, not a takeover.
+        -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/logRecycler"
+            android:layout_width="match_parent"
+            android:layout_height="110dp"
+            android:layout_marginTop="2dp"
+            android:overScrollMode="never"
+            android:requiresFadingEdge="vertical"
+            android:fadingEdgeLength="18dp" />
+
         <TextView
             android:id="@+id/statusText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
             android:textColor="?attr/colorOnSurface"
             android:textSize="13sp"
             android:fontFamily="monospace"

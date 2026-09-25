@@ -52,6 +52,12 @@ internal class FakeEventDao : EventDao {
     override suspend fun getChainTipForSession(sessionId: Long): Event? =
         rows.filter { it.sessionId == sessionId }.maxByOrNull { it.id }
 
+    override suspend fun getRecentEventsForSession(sessionId: Long, limit: Int): List<Event> =
+        rows.filter { it.sessionId == sessionId }
+            .sortedByDescending { it.id }
+            .take(limit)
+            .sortedBy { it.id }
+
     override suspend fun countEventsForSession(sessionId: Long): Int =
         rows.count { it.sessionId == sessionId }
 

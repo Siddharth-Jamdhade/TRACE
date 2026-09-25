@@ -99,6 +99,7 @@ Every sensor below feeds the same Observation → EventExtractor → FusionEngin
 | 📟 **Session Status Chip** | The app bar always states the capture state: `● REC 04:12` with a live timer, `🔒 LOCKED` when evidence is sealed, or `IDLE` — no ambiguity about whether TRACE is recording |
 | 🔒 **Lock Evidence** | One-tap sealing — stops all new recordings, locks the hash chain as a permanent legal artifact. The dashboard status chip shows `🔒 LOCKED` while it is armed |
 | ▶️ **Start / End Session** | An explicit lifecycle replaces "recording starts when the app opens". The chip reads `IDLE` until a session is armed, so `● REC` always means evidence is actually being captured |
+| 📜 **Live Session Log** | The dashboard's bottom quarter is a scrolling transcript of the session: recorded events (with icon, label and fusion status), operator tags, lifecycle and capture errors — newest at the bottom, colour-coded with the same fixed palette as the timeline. A runtime surface, not evidence: on re-attach it is rebuilt from the session's last stored events, so entries recorded while the screen was away are never missing |
 
 ---
 

@@ -128,6 +128,8 @@ Open Logcat in Android Studio, filter tag `TRACE`. Then:
 - Type something meaningless (`banana`) → *every* sensor stays on, and the sheet says why: an unrecognised description must never guess narrow.
 - Turn the camera chip off, then start → the viewfinder is replaced by the list of sensors that are capturing, and the camera is never bound.
 - Tap START SESSION twice quickly in a row → one session, not two.
+- Watch the **SESSION LOG** block in the bottom quarter: `session started · N sensor(s) · "…"`, one line per recorded event with its icon and fusion status, your tags in violet, capture errors in red — newest at the bottom. A sensor the device lacks is named up front (`not on this device: …`) instead of being a silent gap.
+- Leave the app and come back mid-session → the tail is rebuilt from the chain's last events plus a `session resumed` line, so the screen never claims nothing happened while it was away.
 
 ### Step 4 — Verify Fusion Behaviour
 - **Single action** (shake only, no clap) → status should be `UNCONFIRMED`
@@ -158,4 +160,4 @@ Open Logcat in Android Studio, filter tag `TRACE`. Then:
 5. **Recorder concurrency is fixed** — the `MediaRecorder` is owned by a single dedicated thread, so the amplitude loop cannot poll `maxAmplitude()` while a clip save stops/recreates the recorder. A failed clip freeze now reopens the mic instead of killing audio detection for the rest of the session.
 6. **Manual tags are claims, not measurements** — a `manual` event joins its session's hash chain exactly like a sensor event, but `FusionEngine` keeps human assertions out of its source count. One operator tap therefore cannot look like two independent sensors agreeing, and the retroactive status pass leaves the tag's `MANUAL` status alone.
 7. **Capture still stops when the screen sleeps** — backgrounding the app unregisters the sensors (`onPause`) and CameraX is lifecycle-bound, so a session shows `● REC` on return but was not capturing while backgrounded. Real background capture needs the foreground service, which is still not built.
-8. **The bottom quarter of the dashboard is still just a status line** — the spec's scrolling live log tail and the structured event list are not built yet. What exists is the two-line status bar plus the per-event HUD readouts.
+8. **The live log tail is a runtime surface, not an audit trail** — it holds the last 60 lines (`SessionLog`), is rebuilt from the database's most recent events on re-attach, and dies with the process. The evidence of record stays the hash-chained DB in Previous Sessions. It also logs only what the *app* observes: pipeline events, tags, lifecycle and capture errors — not a raw sensor dump.

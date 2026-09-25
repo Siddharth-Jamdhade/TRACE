@@ -28,6 +28,7 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.trace.databinding.ActivityMainBinding
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.CoroutineScope
@@ -213,6 +214,13 @@ class MainActivity : AppCompatActivity() {
     // Running event count shown live on screen (updated on main thread only)
     private var eventCount = 0
 
+    /**
+     * Live transcript for the dashboard's log tail. A runtime surface only —
+     * the evidence of record is the hash-chained database.
+     */
+    private val sessionLog = SessionLog()
+    private val logAdapter = SessionLogAdapter()
+
     /** The open manual-tag chooser, if any. Stops a double tap stacking two dialogs. */
     private var tagDialog: AlertDialog? = null
 
@@ -346,9 +354,15 @@ class MainActivity : AppCompatActivity() {
         binding.btnStartSession.setOnClickListener { showArmingSheet() }
         binding.btnEndSession.setOnClickListener { confirmEndSession() }
 
+        // Live log tail: one adapter, newest line always scrolled into view.
+        binding.logRecycler.layoutManager = LinearLayoutManager(this)
+        binding.logRecycler.adapter = logAdapter
+        binding.logRecycler.itemAnimator = null
+
         // Render the un-armed state before anything asynchronous happens: the app
         // starts idle and must say so, not claim to be watching sensors.
         updateSessionUi()
+        refreshLog()
 
         if (allPermissionsGranted()) {
             onCaptureReady()
@@ -372,6 +386,7 @@ class MainActivity : AppCompatActivity() {
                 onCaptureReady()
             } else {
                 binding.statusText.text = "Permissions denied. TRACE needs Camera + Mic to operate."
+                appendLog(SessionLog.Kind.ERROR, "permissions denied — capture unavailable")
             }
         }
     }
@@ -413,7 +428,15 @@ class MainActivity : AppCompatActivity() {
                 eventCount = count
                 if (existing != null) {
                     Log.i("TRACE", "Resumed session ${existing.id} with ${armedSensorIds.size} sensors")
+                    // The buffer died with the previous instance; rebuild the tail
+                    // from the chain so entries recorded while the screen was away
+                    // are visible again.
+                    seedLogFromDb(existing.id, count)
                     startCapture()
+                    appendLog(
+                        SessionLog.Kind.LIFECYCLE,
+                        "session resumed · ${armedSensorIds.size} sensor(s) · $count event(s)"
+                    )
                 }
                 updateSessionUi()
             }
@@ -452,7 +475,16 @@ class MainActivity : AppCompatActivity() {
                 armedSensorIds = session.sensorIds.toSet()
                 eventCount = 0
                 lastEventTime.clear()
+                // A new session is a new transcript: leftovers from the last
+                // recording must not read as part of this one.
+                sessionLog.clear()
+                refreshLog()
                 startCapture()
+                appendLog(
+                    SessionLog.Kind.LIFECYCLE,
+                    "session started · ${armedSensorIds.size} sensor(s)" +
+                        if (natureOfWork.isNotBlank()) " · \"$natureOfWork\"" else ""
+                )
                 updateSessionUi()
             }
         }
@@ -491,6 +523,16 @@ class MainActivity : AppCompatActivity() {
                 armedSensorIds = emptySet()
                 eventCount = 0
                 refreshCaptureLayout()
+
+                appendLog(
+                    SessionLog.Kind.LIFECYCLE,
+                    if (closed != null) {
+                        "session ended · ${closed.eventCount} event(s) · " +
+                            "${closed.confirmedCount} confirmed"
+                    } else {
+                        "session ended"
+                    }
+                )
                 updateSessionUi()
 
                 // Written last: updateSessionUi() refreshes the idle status line.
@@ -522,6 +564,16 @@ class MainActivity : AppCompatActivity() {
         registerArmedSensors()
         if (SensorRegistry.AUDIO.id in ids) startMicMonitoring() else stopMicMonitoring()
         refreshCaptureLayout()
+
+        // Name the selected pipelines this device cannot feed BEFORE they can be
+        // mistaken for a quiet scene. startCapture runs on the main thread.
+        val missing = armedSensorIds
+            .mapNotNull { id -> SensorRegistry.byId(id) }
+            .filter { it.type > 0 && sensorManager.getDefaultSensor(it.type) == null }
+            .map { "${it.icon} ${SensorRegistry.labelFor(it.id)}" }
+        if (missing.isNotEmpty()) {
+            appendLog(SessionLog.Kind.INFO, "not on this device: ${missing.joinToString(", ")}")
+        }
 
         Log.i("TRACE", "Capture armed: ${ids.joinToString(", ")}")
     }
@@ -661,6 +713,63 @@ class MainActivity : AppCompatActivity() {
         else "%02d:%02d".format(minutes, seconds)
     }
 
+    // ── Live session log tail ─────────────────────────────────────────────
+
+    /** Adds one line to the tail and re-renders. Any thread; rendered on the main thread. */
+    private fun appendLog(kind: SessionLog.Kind, text: String, timestamp: Long =
+                          System.currentTimeMillis()) {
+        sessionLog.append(kind, text, timestamp)
+        runOnUiThread { refreshLog() }
+    }
+
+    /** Re-renders the tail and pins the newest line at the bottom. Main thread only. */
+    private fun refreshLog() {
+        val entries = sessionLog.all()
+        logAdapter.submit(entries)
+        binding.tvLogCount.text = "$eventCount event(s)"
+        if (entries.isNotEmpty()) {
+            binding.logRecycler.scrollToPosition(logAdapter.itemCount - 1)
+        }
+    }
+
+    /**
+     * Rebuilds the tail from the session's most recent stored events.
+     *
+     * The buffer lives only for this process, so an activity re-creation or a
+     * return from background would otherwise show an empty tail beside a chip
+     * that says recording never stopped. Seeding from the database keeps the
+     * screen truthful: it shows the chain's actual last events, one line each.
+     */
+    private fun seedLogFromDb(sessionId: Long, knownCount: Int) {
+        sessionLog.clear()
+        appScope.launch {
+            val recent = database.eventDao().getRecentEventsForSession(
+                sessionId, SessionLog.DEFAULT_CAPACITY
+            )
+            runOnUiThread {
+                recent.forEach { e ->
+                    if (FusionEngine.isHumanAsserted(e)) {
+                        sessionLog.append(SessionLog.Kind.TAG, "✋ tagged: ${e.type.replace("_", " ")}", e.timestamp)
+                    } else {
+                        sessionLog.append(
+                            SessionLog.Kind.EVENT,
+                            "${SensorRegistry.iconFor(e.source)} ${e.type.replace("_", " ")}" +
+                                " · ${SensorRegistry.labelFor(e.source)} · ${e.status}",
+                            e.timestamp
+                        )
+                    }
+                }
+                refreshLog()
+                if (recent.size < knownCount) {
+                    appendLog(
+                        SessionLog.Kind.INFO,
+                        "… ${knownCount - recent.size} earlier entr(y|ies) in Previous Sessions"
+                    )
+                }
+            }
+        }
+    }
+
     // ── App bar actions ───────────────────────────────────────────────────
 
     /** Handles the app bar's actions. */
@@ -711,6 +820,10 @@ class MainActivity : AppCompatActivity() {
         // Re-attach the armed set when the app comes back to the foreground. The
         // set cannot have changed while paused — it is fixed for the session — so
         // this is the same call that arming uses.
+        if (evidenceLocked.get()) {
+            appendLog(SessionLog.Kind.ERROR, "Evidence Lock is on — new observations are dropped")
+        }
+
         if (activeSession != null) {
             registerArmedSensors()
             if (SensorRegistry.AUDIO.id in armedSensorIds) startMicMonitoring()
@@ -784,6 +897,7 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 Log.e("TRACE", "Camera failed", e)
                 binding.statusText.text = "Camera failed: ${e.message}"
+                appendLog(SessionLog.Kind.ERROR, "camera failed: ${e.message}")
             }
         }, ContextCompat.getMainExecutor(this))
     }
@@ -921,7 +1035,10 @@ class MainActivity : AppCompatActivity() {
             newRecorder()
         } catch (e: Exception) {
             Log.e("TRACE", "Mic unavailable", e)
-            runOnUiThread { binding.statusText.text = "Mic failed: ${e.message}" }
+            runOnUiThread {
+                binding.statusText.text = "Mic failed: ${e.message}"
+                appendLog(SessionLog.Kind.ERROR, "mic failed: ${e.message}")
+            }
             return false
         }
 
@@ -942,7 +1059,10 @@ class MainActivity : AppCompatActivity() {
             releaseQuietly(recorder)
             mediaRecorder = null
             recorderStarted = false
-            runOnUiThread { binding.statusText.text = "Mic failed: ${e.message}" }
+            runOnUiThread {
+                binding.statusText.text = "Mic failed: ${e.message}"
+                appendLog(SessionLog.Kind.ERROR, "mic failed: ${e.message}")
+            }
             false
         }
     }
@@ -1267,6 +1387,12 @@ class MainActivity : AppCompatActivity() {
             // Update the phone screen counter + last event banner immediately
             runOnUiThread {
                 eventCount++
+                appendLog(
+                    SessionLog.Kind.EVENT,
+                    "${SensorRegistry.iconFor(obs.source)} ${eventType.replace("_", " ")}" +
+                        " · ${SensorRegistry.labelFor(obs.source)} · ${finalEvent.status}",
+                    finalEvent.timestamp
+                )
                 updateStatusBar(
                     lastEventType = eventType.replace("_", " "),
                     lastStatus    = finalEvent.status
@@ -1439,6 +1565,7 @@ class MainActivity : AppCompatActivity() {
 
             runOnUiThread {
                 eventCount++
+                appendLog(SessionLog.Kind.TAG, "✋ tagged: $title", stored.timestamp)
                 updateStatusBar(lastEventType = title, lastStatus = "MANUAL")
                 Toast.makeText(this@MainActivity, "Tagged: $title", Toast.LENGTH_SHORT).show()
             }

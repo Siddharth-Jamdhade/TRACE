@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  One line of the live session log tail.
+
+  A single TextView keeps the tail compact — time and text share the line, and
+  the colour is set in code from the entry's kind (same fixed semantic palette
+  the timeline uses, so a green line means CONFIRMED here too).
+-->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/tvLogLine"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:fontFamily="monospace"
+    android:textSize="11sp"
+    android:lineSpacingExtra="2dp"
+    android:paddingTop="1dp"
+    android:paddingBottom="1dp"
+    android:textColor="@color/trace_on_surface_variant" />

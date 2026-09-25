@@ -42,6 +42,21 @@ interface EventDao {
     @Query("SELECT * FROM events WHERE sessionId = :sessionId ORDER BY id DESC LIMIT 1")
     suspend fun getChainTipForSession(sessionId: Long): Event?
 
+    /**
+     * The most recent [limit] events of a session, oldest first.
+     *
+     * Reads only — no schema change — and backs the live view's log tail: when
+     * the dashboard re-attaches to a running session it reseeds the tail from
+     * the chain's actual last events, so entries recorded while the screen was
+     * away are not lost. Ordered by id (custody order) for the same reason
+     * [getChainTipForSession] is.
+     */
+    @Query(
+        "SELECT * FROM (SELECT * FROM events WHERE sessionId = :sessionId " +
+            "ORDER BY id DESC LIMIT :limit) ORDER BY id ASC"
+    )
+    suspend fun getRecentEventsForSession(sessionId: Long, limit: Int): List<Event>
+
     @Query("SELECT COUNT(*) FROM events WHERE sessionId = :sessionId")
     suspend fun countEventsForSession(sessionId: Long): Int
 
