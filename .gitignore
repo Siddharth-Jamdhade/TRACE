@@ -20,8 +20,10 @@ local.properties
 .cxx/
 
 # Verification session artifacts (device pulls, screenshots, UI dumps)
+/shots
 /shots/
 /device_db/
+/device_db
 /ui_dump.xml
 
 # Exported evidence JSON from testing
