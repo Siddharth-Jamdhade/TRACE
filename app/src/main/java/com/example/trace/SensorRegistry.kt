@@ -62,8 +62,26 @@ object SensorRegistry {
     /** Import source (not a physical sensor): ML Kit-labelled video events. */
     val VIDEO = SensorSpec("video", -1, "🎥", "Imported video keyframes")
 
+    /**
+     * Human assertion, not a measurement: the operator saw something happen and
+     * tagged it from the live view.
+     *
+     * Deliberately absent from [ALL], because it is not a sensor and must not
+     * leak into the places that assume one:
+     *   - a session's sensor set and the availability report,
+     *   - [FusionEngine]'s count of independent sources, and
+     *   - [Event.sensorBreakdown] (see [FusionEngine.buildEnrichedEvent]).
+     * A tag has no `Sensor.TYPE_*` to read, hence the -1 placeholder shared with
+     * the other software sources.
+     */
+    val MANUAL = SensorSpec("manual", -1, "✋",
+        "Operator assertion: an incident a human on scene reported directly")
+
+    /** Sources that are NOT physical sensors: human input and imported video. */
+    val NON_SENSOR = listOf(VIDEO, MANUAL)
+
     fun byId(id: String): SensorSpec? =
-        ALL.firstOrNull { it.id == id } ?: if (id == "video") VIDEO else null
+        ALL.firstOrNull { it.id == id } ?: NON_SENSOR.firstOrNull { it.id == id }
 
     fun iconFor(source: String): String = byId(source)?.icon ?: "❓"
 

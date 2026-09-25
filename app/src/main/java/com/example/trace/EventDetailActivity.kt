@@ -94,13 +94,17 @@ class EventDetailActivity : AppCompatActivity() {
             "CONFIRMED"   -> ContextCompat.getColor(this, R.color.trace_status_confirmed_surface)
             "UNCONFIRMED" -> ContextCompat.getColor(this, R.color.trace_status_unconfirmed_surface)
             "REJECTED"    -> ContextCompat.getColor(this, R.color.trace_status_rejected_surface)
+            "MANUAL"      -> ContextCompat.getColor(this, R.color.trace_status_manual_surface)
             else          -> ContextCompat.getColor(this, R.color.trace_status_unknown_surface)
         }
+        val manual = e.source == SensorRegistry.MANUAL.id
         binding.statusCard.setBackgroundColor(statusColor)
         binding.tvStatus.text    = e.status
         binding.tvEventType.text = e.type.replace("_", " ").replaceFirstChar { it.uppercase() }
         binding.tvTimestamp.text = dateFmt.format(Date(e.timestamp))
-        binding.tvSource.text    = "Primary source: ${e.source}"
+        binding.tvSource.text    =
+            if (manual) "Primary source: manual (asserted by the operator)"
+            else        "Primary source: ${e.source}"
 
         // Sensor confidence bars
         // If the event was triggered by a single sensor, its own confidence is the
@@ -118,15 +122,24 @@ class EventDetailActivity : AppCompatActivity() {
 
         // Extra sensors recorded in the fusion window (magnetometer, barometer,
         // light, linear, gyroscope, step, sigmotion) — shown so no evidence is hidden.
-        binding.tvExtraSensors.text = e.sensorBreakdown
-            ?.split("|")
-            ?.filter { it.isNotBlank() }
-            ?.joinToString("\n") { pair ->
-                val sensor = pair.substringBefore(':')
-                val conf   = pair.substringAfter(':').toFloatOrNull() ?: 0f
-                "${SensorRegistry.iconFor(sensor)} ${SensorRegistry.labelFor(sensor)}: ${"%.0f".format(conf * 100)}%"
-            }
-            ?.takeIf { it.isNotEmpty() } ?: "No additional sensor evidence in window."
+        //
+        // For a manual tag the three bars above stay empty by design (no sensor
+        // measured anything for it), which would read like a fault; explain it
+        // instead of leaving three bare zeros.
+        binding.tvExtraSensors.text = if (manual) {
+            "${SensorRegistry.MANUAL.icon} Asserted by the operator — no sensor contributed to this record.\n" +
+            "Sensor events recorded around this moment are separate entries in the timeline."
+        } else {
+            e.sensorBreakdown
+                ?.split("|")
+                ?.filter { it.isNotBlank() }
+                ?.joinToString("\n") { pair ->
+                    val sensor = pair.substringBefore(':')
+                    val conf   = pair.substringAfter(':').toFloatOrNull() ?: 0f
+                    "${SensorRegistry.iconFor(sensor)} ${SensorRegistry.labelFor(sensor)}: ${"%.0f".format(conf * 100)}%"
+                }
+                ?.takeIf { it.isNotEmpty() } ?: "No additional sensor evidence in window."
+        }
 
         // Explanation text
         binding.tvExplanation.text = QueryEngine.explainConfidence(e)

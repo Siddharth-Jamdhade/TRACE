@@ -80,7 +80,7 @@ Phone Sensors
 | [`TraceDatabase.kt`](file:///c:/Users/SIDDHARTH/AndroidStudioProjects/TRACE/app/src/main/java/com/example/trace/TraceDatabase.kt) | Version 2→3, explicit `MIGRATION_2_3` — destructive fallback removed |
 | [`EventExtractor.kt`](file:///c:/Users/SIDDHARTH/AndroidStudioProjects/TRACE/app/src/main/java/com/example/trace/EventExtractor.kt) | Added `"camera"` source: `>0.75` → `"object_falls"`, `>0.50` → `"object_moves"` |
 | [`MainActivity.kt`](file:///c:/Users/SIDDHARTH/AndroidStudioProjects/TRACE/app/src/main/java/com/example/trace/MainActivity.kt) | Full refactor: ViewBinding, ImageAnalysis frame-differencing, FusionEngine, HashChain, evidence clip saving, ConcurrentHashMap cooldown, `onPause`/`onResume` sensor lifecycle fix |
-| [`activity_main.xml`](file:///c:/Users/SIDDHARTH/AndroidStudioProjects/TRACE/app/src/main/res/layout/activity_main.xml) | Added green `btnTimeline` button |
+| [`activity_main.xml`](file:///c:/Users/SIDDHARTH/AndroidStudioProjects/TRACE/app/src/main/res/layout/activity_main.xml) | Live view: green `TAG INCIDENT` button (operator-asserted evidence) + `Analyse Video` |
 | [`app/build.gradle.kts`](file:///c:/Users/SIDDHARTH/AndroidStudioProjects/TRACE/app/build.gradle.kts) | `viewBinding = true`, +`recyclerview:1.3.2` |
 | [`AndroidManifest.xml`](file:///c:/Users/SIDDHARTH/AndroidStudioProjects/TRACE/app/src/main/AndroidManifest.xml) | Registered `TimelineActivity` and `EventDetailActivity` |
 
@@ -113,11 +113,13 @@ Open Logcat in Android Studio, filter tag `TRACE`. Then:
 2. **Shake the phone hard** → "EVENT SAVED: type=impact" in Logcat
 3. **Clap near the phone** → "EVENT SAVED: type=alarm" in Logcat
 4. **Wave hand in front of camera** → "EVENT SAVED: type=object_moves" in Logcat
-5. **Tap "View Timeline →"** → see events listed in reverse time order
-6. **Type in query box**: "what happened before the alarm?" → get text answer
-7. **Tap an event** → see confidence bars, Confirm / Reject buttons
-8. **Tap Confirm** → status badge turns green immediately
-9. **Tap "Play Evidence Clip"** → should play the audio captured at that moment
+5. **Tap TAG INCIDENT** → choose "Object fell" → a violet `MANUAL` entry is added with its own audio clip.
+   This is the one detection TRACE cannot make for itself: the sensors prove *that* something moved, only you can say *what* it was.
+6. **Tap the sessions icon (top-right)** → see events listed in reverse time order
+7. **Type in query box**: "what happened before the alarm?" → get text answer ("list manual tags" also works)
+8. **Tap an event** → see confidence bars, Confirm / Reject buttons
+9. **Tap Confirm** → status badge turns green immediately
+10. **Tap "Play Evidence Clip"** → should play the audio captured at that moment
 
 ### Step 4 — Verify Fusion Behaviour
 - **Single action** (shake only, no clap) → status should be `UNCONFIRMED`
@@ -146,3 +148,4 @@ Open Logcat in Android Studio, filter tag `TRACE`. Then:
 3. **Schema migrations are now real** — `fallbackToDestructiveMigration()` has been removed and v2 → v3 migrates in place. A missing migration fails loudly instead of silently deleting evidence.
 4. **Hash chain race is fixed** — every write goes through `ChainWriter`, which serialises read-tip → insert → hash → update behind a mutex, so simultaneous sensor events can no longer fork the chain.
 5. **Recorder concurrency is fixed** — the `MediaRecorder` is owned by a single dedicated thread, so the amplitude loop cannot poll `maxAmplitude()` while a clip save stops/recreates the recorder. A failed clip freeze now reopens the mic instead of killing audio detection for the rest of the session.
+6. **Manual tags are claims, not measurements** — a `manual` event joins its session's hash chain exactly like a sensor event, but `FusionEngine` keeps human assertions out of its source count. One operator tap therefore cannot look like two independent sensors agreeing, and the retroactive status pass leaves the tag's `MANUAL` status alone.

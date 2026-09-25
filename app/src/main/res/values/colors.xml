@@ -66,6 +66,15 @@
     <color name="trace_status_unknown">#484F58</color>
     <color name="trace_status_unknown_surface">#263238</color>
 
+    <!--
+      Fixed semantic: a human assertion. Violet sits outside the
+      confirm/uncertain/reject hue family on purpose — an operator tag is a
+      claim made by a person, and must never be mistaken at a glance for a
+      verdict the sensors reached on their own.
+    -->
+    <color name="trace_status_manual">#B388FF</color>
+    <color name="trace_status_manual_surface">#4527A0</color>
+
     <!-- Fixed semantic: hash-chain integrity -->
     <color name="trace_integrity_ok">#00C853</color>
     <color name="trace_integrity_broken">#D50000</color>

@@ -28,7 +28,15 @@ data class Event(
     /** Normalized confidence of the primary triggering sensor (0.0–1.0). */
     val confidence: Float,
 
-    /** Fusion status: "CONFIRMED", "UNCONFIRMED", or "REJECTED". */
+    /**
+     * Fusion status: "CONFIRMED", "UNCONFIRMED", "REJECTED", or "MANUAL".
+     *
+     * "MANUAL" is not a fusion verdict — it marks a record a human asserted from
+     * the live view. It is excluded from [FusionEngine]'s source count, so a tag
+     * can never turn into a CONFIRMED incident on the strength of its own
+     * presence. Mutable, and excluded from [HashChain]'s payload, so review
+     * decisions (Confirm / Reject) never invalidate the chain.
+     */
     var status: String = "UNCONFIRMED",
 
     // --- Per-sensor confidence values (filled by FusionEngine) ----------

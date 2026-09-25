@@ -15,6 +15,8 @@ import android.os.Bundle
 import android.util.Log
 import android.util.Size
 import android.view.WindowManager
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -25,6 +27,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.example.trace.databinding.ActivityMainBinding
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -198,6 +201,29 @@ class MainActivity : AppCompatActivity() {
     // Running event count shown live on screen (updated on main thread only)
     private var eventCount = 0
 
+    /** The open manual-tag chooser, if any. Stops a double tap stacking two dialogs. */
+    private var tagDialog: AlertDialog? = null
+
+    /**
+     * What an operator can assert they saw.
+     *
+     * These reuse the extractor's event-type vocabulary on purpose, so a tagged
+     * fall lands in the same "list all falls" answer as a camera or linear-
+     * acceleration fall, and cross-checks against nearby sensor evidence work.
+     * The final entry is an escape hatch: a person can see things none of the
+     * ten sensors in this app model.
+     */
+    private val MANUAL_TAG_LABELS = listOf(
+        "object_falls"   to "Object fell",
+        "impact"         to "Impact / collision",
+        "door_slam"      to "Door opened or shut",
+        "alarm"          to "Alarm / raised voice",
+        "object_moves"   to "Object moved",
+        "person_present" to "Person present",
+        "lights_off"     to "Lights off",
+        "other"          to "Something else"
+    )
+
     // ── Accelerometer listener ────────────────────────────────────────────
     private val sensorListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
@@ -293,8 +319,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        binding.btnTimeline.setOnClickListener {
-            startActivity(Intent(this, TimelineActivity::class.java))
+        binding.btnTagIncident.setOnClickListener {
+            showTagDialog()
         }
 
         binding.btnAnalyseVideo.setOnClickListener {
@@ -355,7 +381,7 @@ class MainActivity : AppCompatActivity() {
             lastEventType != null -> "LAST EVENT: $lastEventType  [$lastStatus]"
             else -> "TRACE ACTIVE — watching all sensors"
         }
-        val line2 = "Events recorded: $eventCount   |   Tap  View Timeline  to review"
+        val line2 = "Events recorded: $eventCount   |   TAG marks an incident you saw"
         binding.statusText.text = "$line1\n$line2"
     }
 
@@ -1002,7 +1028,8 @@ class MainActivity : AppCompatActivity() {
                 .getEventsInWindowForSession(session.id, windowStart, windowEnd)
             val fusedStatus   = FusionEngine.determineStatus(updatedWindow)
             updatedWindow.forEach { e ->
-                if (e.status != fusedStatus) {
+                // A human assertion is not a fusion verdict: leave MANUAL alone.
+                if (!FusionEngine.isHumanAsserted(e) && e.status != fusedStatus) {
                     database.eventDao().updateStatus(e.id, fusedStatus)
                 }
             }
@@ -1063,6 +1090,89 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ── Feature B: CONFIRMED Push Notification ────────────────────────────
+
+    // ── Manual incident tagging ───────────────────────────────────────────
+
+    /**
+     * Asks the operator what happened, then records their answer as evidence.
+     *
+     * This is the only input to the timeline that comes from a person rather than
+     * a sensor, and it exists because the sensors can infer *that* something
+     * happened but never what it was or whether it mattered. The operator on
+     * scene is the only observer who knows that, so their statement is stored as
+     * first-class evidence — see [recordManualTag].
+     */
+    private fun showTagDialog() {
+        if (tagDialog?.isShowing == true) return
+
+        val titles = MANUAL_TAG_LABELS.map { it.second }.toTypedArray()
+
+        tagDialog = MaterialAlertDialogBuilder(this)
+            .setTitle("Tag an incident")
+            .setSingleChoiceItems(titles, -1) { dialog, which ->
+                dialog.dismiss()
+                recordManualTag(MANUAL_TAG_LABELS[which].first, MANUAL_TAG_LABELS[which].second)
+            }
+            .setNegativeButton("Cancel", null)
+            .create()
+
+        tagDialog?.show()
+    }
+
+    /**
+     * Writes a human-asserted incident into the active session's chain.
+     *
+     * Deliberately not fused: [FusionEngine] leaves human assertions out of its
+     * source count, so a tag can never become a CONFIRMED incident on the
+     * strength of its own presence — one person tapping once is not two
+     * independent sensors agreeing. It is stored as [SensorRegistry.MANUAL] with
+     * status MANUAL, which is what keeps the distinction visible in the timeline,
+     * the detail view and [QueryEngine].
+     *
+     * Everything else matches a sensor event: the same single chain writer (so
+     * the tag joins the session in custody order no matter what fires beside it),
+     * the same session anchor, and the same audio evidence clip.
+     */
+    private fun recordManualTag(type: String, title: String) {
+        // A human assertion is evidence, so a locked timeline refuses it for the
+        // same reason it refuses an observation.
+        if (evidenceLocked.get()) {
+            Toast.makeText(this, "Evidence Lock is on — unlock to add evidence", Toast.LENGTH_SHORT)
+                .show()
+            return
+        }
+
+        val tag = Event(
+            type       = type,
+            timestamp  = System.currentTimeMillis(),
+            source     = SensorRegistry.MANUAL.id,
+            confidence = 1f,
+            status     = "MANUAL"
+        )
+
+        appScope.launch {
+            val session = activeSession ?: SessionManager
+                .ensureActiveSession(database.sessionDao())
+                .also { activeSession = it }
+
+            val stored = ChainWriter.append(database.eventDao(), session, tag)
+            Log.i("TRACE", "MANUAL TAG: id=${stored.id} type=$type session=${session.id}")
+
+            // An operator tagging *now* is the strongest hint there is that
+            // something is happening right now, so keep the audio around this
+            // moment as an evidence clip (serialised on the audio thread).
+            val clipPath = saveEvidenceClip(stored.id)
+            if (clipPath != null) {
+                database.eventDao().update(stored.copy(evidenceClipPath = clipPath))
+            }
+
+            runOnUiThread {
+                eventCount++
+                updateStatusBar(lastEventType = title, lastStatus = "MANUAL")
+                Toast.makeText(this@MainActivity, "Tagged: $title", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     /**
      * Fires a silent notification when multi-sensor fusion confirms an incident.

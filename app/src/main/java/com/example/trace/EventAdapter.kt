@@ -15,7 +15,8 @@ import java.util.Locale
  * TRACE — RecyclerView adapter for the incident timeline.
  *
  * Uses [ListAdapter] + [DiffUtil] for efficient, animated list updates.
- * Status colours: CONFIRMED = green, UNCONFIRMED = amber, REJECTED = red.
+ * Status colours: CONFIRMED = green, UNCONFIRMED = amber, REJECTED = red,
+ * MANUAL (operator assertion) = violet.
  */
 class EventAdapter(
     private val onItemClick: (Event) -> Unit
@@ -41,7 +42,13 @@ class EventAdapter(
             binding.tvEventType.text = event.type.replace("_", " ")
                 .replaceFirstChar { it.uppercase() }
             binding.tvTimestamp.text = timeFmt.format(Date(event.timestamp))
-            binding.tvSource.text    = "src: ${event.source}  |  ${"%.0f".format(event.confidence * 100)}%"
+            // A human assertion has no sensor confidence behind it, so printing a
+            // percentage would dress a claim up as a measurement. Say what it is.
+            binding.tvSource.text = if (event.source == SensorRegistry.MANUAL.id) {
+                "src: manual  |  operator tag"
+            } else {
+                "src: ${event.source}  |  ${"%.0f".format(event.confidence * 100)}%"
+            }
             binding.tvStatus.text    = event.status
 
             // Fixed semantic colours — a status badge must not change colour with
@@ -50,6 +57,7 @@ class EventAdapter(
                 "CONFIRMED"   -> R.color.trace_status_confirmed
                 "UNCONFIRMED" -> R.color.trace_status_unconfirmed
                 "REJECTED"    -> R.color.trace_status_rejected
+                "MANUAL"      -> R.color.trace_status_manual
                 else          -> R.color.trace_status_unknown
             }
             val (stripColor, badgeTextColor) = Pair(

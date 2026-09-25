@@ -47,7 +47,9 @@ object QueryEngine {
                 val c = sorted.count { it.status == "CONFIRMED" }
                 val u = sorted.count { it.status == "UNCONFIRMED" }
                 val r = sorted.count { it.status == "REJECTED" }
-                "Total: ${sorted.size}  CONFIRMED: $c  UNCONFIRMED: $u  REJECTED: $r"
+                val m = sorted.count { it.source == SensorRegistry.MANUAL.id }
+                "Total: ${sorted.size}  CONFIRMED: $c  UNCONFIRMED: $u  REJECTED: $r" +
+                    if (m > 0) "  MANUAL: $m" else ""
             }
             "confirmed" in q && "unconfirmed" !in q -> {
                 val list = sorted.filter { it.status == "CONFIRMED" }
@@ -99,6 +101,14 @@ object QueryEngine {
                 if (list.isEmpty()) "No visual events recorded."
                 else "Visual events:\n${describeList(list)}"
             }
+            // Operator assertions. These have to be tested before the generic
+            // "list all" branch below, because a query like "list manual tags"
+            // contains "list" and would otherwise never reach this case.
+            "manual" in q || "tag" in q -> {
+                val list = sorted.filter { it.source == SensorRegistry.MANUAL.id }
+                if (list.isEmpty()) "No incidents were tagged by the operator."
+                else "Operator-tagged incidents (human assertions, not sensor verdicts):\n${describeList(list)}"
+            }
             "show" in q || "list" in q || "all" in q -> {
                 "All ${sorted.size} events:\n${describeList(sorted)}"
             }
@@ -108,7 +118,7 @@ object QueryEngine {
                 "  why was it confirmed?   - sensor evidence breakdown\n" +
                 "  show last event         - most recent entry\n" +
                 "  how many events?        - status counts\n" +
-                "  list all / confirmed / fall / door / person / lights / pressure"
+                "  list all / confirmed / fall / door / person / lights / pressure / manual"
             }
         }
     }
@@ -143,6 +153,8 @@ object QueryEngine {
             "CONFIRMED"   -> "CONFIRMED: $strong independent sensors agreed (>60% each)."
             "UNCONFIRMED" -> "UNCONFIRMED: Only 1 sensor detected this. Human review recommended."
             "REJECTED"    -> "REJECTED: No sensor exceeded the confidence threshold."
+            "MANUAL"      -> "MANUAL: asserted by the operator on scene. No sensor agreement was required, " +
+                             "so read this as a human statement rather than a measurement."
             else          -> "Status unknown."
         })
     }

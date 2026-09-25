@@ -153,13 +153,20 @@
             android:layout_marginTop="10dp"
             android:weightSum="2">
 
+            <!--
+              The operator's own evidence. TRACE can only infer THAT something
+              happened; only a person can say WHAT it was, so this is the one
+              capture action a human drives. It takes the slot the HUD's Timeline
+              button used to hold: browsing sessions is the app bar's job now, and
+              during an incident the thumb-reachable corner is worth more.
+            -->
             <Button
-                android:id="@+id/btnTimeline"
+                android:id="@+id/btnTagIncident"
                 android:layout_width="0dp"
                 android:layout_height="44dp"
                 android:layout_weight="1"
                 android:layout_marginEnd="6dp"
-                android:text="Timeline"
+                android:text="TAG INCIDENT"
                 android:textColor="?attr/colorOnPrimary"
                 android:textStyle="bold"
                 android:textSize="13sp"

@@ -69,7 +69,7 @@ Every sensor below feeds the same Observation → EventExtractor → FusionEngin
 ### Intelligence
 | Feature | Description |
 |---------|-------------|
-| ⚡ **Sensor Fusion Engine** | Cross-references all sensors in a ±2s window *within the same session*. ≥2 sensors agreeing → `CONFIRMED`. 1 sensor → `UNCONFIRMED`. 0 → `REJECTED` |
+| ⚡ **Sensor Fusion Engine** | Cross-references all sensors in a ±2s window *within the same session*. ≥2 sensors agreeing → `CONFIRMED`. 1 sensor → `UNCONFIRMED`. 0 → `REJECTED`. Manual tags are excluded from the source count, so one operator tap can never masquerade as two sensors agreeing |
 | 🔐 **SHA-256 Hash Chain** | Every event is cryptographically chained to the previous event **of its session**. Tampering breaks that session's chain permanently — and cannot invalidate any other session |
 | 💬 **NLP Query Engine** | Ask plain-English questions like *"what happened before the alarm?"* — answered from local DB with zero internet |
 
@@ -77,7 +77,8 @@ Every sensor below feeds the same Observation → EventExtractor → FusionEngin
 | Feature | Description |
 |---------|-------------|
 | 🎵 **Audio Evidence Clips** | Real `.amr` audio snapshot saved for every event — stop → copy → restart pattern guarantees playback |
-| 📊 **Incident Timeline** | Chronological log with color-coded status pills (🟢 CONFIRMED / 🟡 UNCONFIRMED / 🔴 REJECTED) |
+| 📊 **Incident Timeline** | Chronological log with color-coded status pills (🟢 CONFIRMED / 🟡 UNCONFIRMED / 🔴 REJECTED / 🟣 MANUAL) |
+| ✋ **Manual Incident Tag** | The operator asserts what happened — `TAG INCIDENT` on the live view offers the sensor vocabulary (object fell, impact, door, alarm, person, lights, other). Recorded as source `manual` with status `MANUAL`: full chain evidence, but explicitly *not* a sensor verdict |
 | 🎥 **Smart Video Import** | Pick random video clips → TRACE sorts by creation timestamp → extracts keyframes with ML Kit → adds to timeline |
 | 📤 **JSON Export** | Export entire evidence chain to `events.json` for review in the standalone `trace_viewer.html` laptop viewer |
 
@@ -240,6 +241,7 @@ Grant all permissions when prompted:
 | Open Timeline | All events with timestamps |
 | Tap any event | Confidence bars + audio clip + hash |
 | Type question + ASK | Instant NLP answer |
+| Tap ✋ TAG INCIDENT | Record an incident **you** saw: pick a label, and it joins the session chain as a human assertion |
 | Tap 🎥 Analyse Video | Import & chronologically sort video clips |
 | Tap 🔒 LOCK | Seal evidence chain permanently |
 | Tap the app bar icons | Previous Sessions (timeline) / Settings (palette switch) |
@@ -257,7 +259,7 @@ sessionHash  = SHA256("trace-session-v1|7|site inspection|1730000000000|motion|a
 
 Event 1: hash = SHA256("impact|1234567890|motion|0.83" + sessionHash)
 Event 2: hash = SHA256("alarm|1234567891|audio|0.91" + Event1.hash)
-Event 3: hash = SHA256("object_moves|...|UNCONFIRMED" + Event2.hash)
+Event 3: hash = SHA256("object_moves|1234567892|camera|0.61" + Event2.hash)
 ```
 
 Because the session id, description, start time and sensor set are inside
@@ -276,6 +278,7 @@ healthy one look broken.
 | **Imported footage** | Video import creates its own `Imported footage` session, keeping provenance obvious and its chain independent of any live session |
 | **Interrupted sessions** | A crash or force-stop leaves the session `ACTIVE`; the next launch closes it as `INTERRUPTED` with its duration and counters filled in |
 | **Fusion isolation** | The ±2s fusion window only ever reads the current session, so overlapping timestamps in imported footage cannot confirm a live event |
+| **Human assertions** | A `manual` tag is verified by the same chain as any sensor event — moving it between sessions breaks verification — but it is skipped by the fusion verdict, so an operator's claim is never laundered into a sensor conclusion |
 
 ---
 
@@ -287,6 +290,7 @@ what happened after the impact?
 how many confirmed events?
 show all falls
 show all motion
+list manual tags
 why was it confirmed?
 last event
 ```
