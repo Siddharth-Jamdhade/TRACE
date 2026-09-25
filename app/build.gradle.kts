@@ -59,19 +59,10 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.3.4")
     implementation("androidx.camera:camera-view:1.3.4")
 
-    // ML Kit — on-device object detection & image labeling (offline, no internet)
-    implementation("com.google.mlkit:object-detection:17.0.1")
+    // ML Kit — on-device image labeling for video import (offline, no internet).
+    // (The object-detection artifact was removed: nothing in the codebase called
+    // it, and it shipped its bundled model to every APK for nothing.)
     implementation("com.google.mlkit:image-labeling:17.0.9")
-
-//    // TensorFlow Lite — audio classifier (YAMNet) — uncomment when upgrading audio
-//    implementation("org.tensorflow:tensorflow-lite:2.14.0")
-//    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
-    configurations.all {
-        resolutionStrategy {
-            force("org.tensorflow:tensorflow-lite-api:2.14.0")
-            force("org.tensorflow:tensorflow-lite-support-api:0.4.4")
-        }
-    }
 
     // Room database
     implementation("androidx.room:room-runtime:2.7.1")

@@ -47,9 +47,20 @@ data class Event(
     /** |-separated "sensor:0.xx" pairs for extra sensors present in the window (see FusionEngine). */
     val sensorBreakdown: String? = null,
 
-    // --- Evidence clip path (filled after saving audio evidence) ---------
+    // --- Evidence files (filled after capture) -----------------------
     /** Absolute path to the saved amr audio clip, or null if not available. */
     val evidenceClipPath: String? = null,
+
+    /**
+     * Absolute path to the saved JPEG camera frame, or null if none was taken.
+     *
+     * A still is the weakest visual evidence there is — one frame, no motion —
+     * but an event with an audio clip and no visual at all reconstructs even
+     * less. Deliberately a sibling of [evidenceClipPath] rather than a
+     * replacement: audio and image fail independently, and neither should
+     * block the other.
+     */
+    val evidencePhotoPath: String? = null,
 
     // --- SHA-256 hash chain fields ---------------------------------------
     /** SHA-256 hash of this event chained to [previousHash]. */

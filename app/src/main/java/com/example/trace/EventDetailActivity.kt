@@ -1,10 +1,15 @@
 package com.example.trace
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.media.ExifInterface
 import android.media.MediaPlayer
 import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
+import android.widget.ImageView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.example.trace.databinding.ActivityEventDetailBinding
@@ -60,6 +65,7 @@ class EventDetailActivity : AppCompatActivity() {
         binding.btnConfirm.setOnClickListener { updateStatus("CONFIRMED") }
         binding.btnReject.setOnClickListener  { updateStatus("REJECTED")  }
         binding.btnPlayEvidence.setOnClickListener { playEvidence() }
+        binding.btnViewPhoto.setOnClickListener { showSnapshot() }
     }
 
     // ------ Data loading ------------------------------------------------
@@ -154,6 +160,22 @@ class EventDetailActivity : AppCompatActivity() {
             binding.btnPlayEvidence.visibility = View.GONE
         }
 
+        // Camera snapshot: a still is the weakest visual evidence, but it is the
+        // only visual this event has. Hidden rather than shown when the file is
+        // gone — an investigator must never be offered a button that cannot work.
+        val photo = e.evidencePhotoPath
+        if (!photo.isNullOrEmpty() && File(photo).exists()) {
+            binding.tvPhotoStatus.text = "Camera snapshot available."
+            binding.btnViewPhoto.visibility = View.VISIBLE
+        } else {
+            binding.tvPhotoStatus.text =
+                if (manual) "No snapshot — a tag records your assertion, and the\n" +
+                    "camera captures for events in the same session."
+                else "No camera snapshot for this event."
+            binding.btnViewPhoto.visibility = View.GONE
+            binding.ivSnapshot.visibility = View.GONE
+        }
+
         // Hash-chain integrity
         if (e.hash != null) {
             val overallOk = singleValid && chainValid
@@ -212,6 +234,65 @@ class EventDetailActivity : AppCompatActivity() {
         } catch (ex: Exception) {
             Toast.makeText(this, "Playback failed: ${ex.message}", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    /**
+     * Opens the event's snapshot in a dialog, decoded downsampled.
+     *
+     * Review is not forensic analysis: no screen here needs more than ~2048px,
+     * so the file is decoded with an inSampleSize chosen from its dimensions —
+     * a 12 MP frame read at full size would spike memory for no gain. EXIF
+     * rotation is applied because CameraX writes sensor orientation, and a
+     * sideways photo reads as a different camera position.
+     */
+    private fun showSnapshot() {
+        val path = currentEvent?.evidencePhotoPath ?: return
+        val file = File(path)
+        if (!file.exists()) {
+            Toast.makeText(this, "Snapshot file not found", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        try {
+            // Pass 1: dimensions only.
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(path, bounds)
+
+            val opts = BitmapFactory.Options().apply {
+                inSampleSize = maxOf(1, minOf(bounds.outWidth, bounds.outHeight) / 2048)
+            }
+            val rotated = rotateFromExif(path, BitmapFactory.decodeFile(path, opts))
+
+            val imageView = ImageView(this).apply {
+                adjustViewBounds = true
+                setImageBitmap(rotated)
+            }
+            AlertDialog.Builder(this)
+                .setTitle("Snapshot · ${dateFmt.format(Date(currentEvent?.timestamp ?: 0))}")
+                .setView(imageView)
+                .setPositiveButton("Close", null)
+                .show()
+        } catch (ex: Exception) {
+            Toast.makeText(this, "Could not open snapshot: ${ex.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /** Applies the file's EXIF orientation, falling back to the input bitmap. */
+    private fun rotateFromExif(path: String, bitmap: Bitmap?): Bitmap? {
+        if (bitmap == null) return null
+        val rotation = when (
+            ExifInterface(path).getAttributeInt(
+                ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL
+            )
+        ) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+            ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+            ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+            else -> 0f
+        }
+        if (rotation == 0f) return bitmap
+        val matrix = android.graphics.Matrix().apply { postRotate(rotation) }
+        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
     }
 
     // ------ Lifecycle ---------------------------------------------------

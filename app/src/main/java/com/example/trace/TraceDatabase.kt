@@ -11,7 +11,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * Current schema version. Bump this AND add the matching migration to
  * [TraceDatabase.MIGRATIONS] whenever an entity changes.
  */
-internal const val TRACE_DB_VERSION = 4
+internal const val TRACE_DB_VERSION = 5
 
 /**
  * Oldest schema version this build can open without destroying evidence.
@@ -27,6 +27,7 @@ internal const val TRACE_DB_OLDEST_SUPPORTED = 2
 //        audioConfidence, motionConfidence, evidenceClipPath, hash, previousHash
 //   v3 — v2 + sensorBreakdown (extended sensor array, v2.1)
 //   v4 — v3 + sessions table, and events.sessionId (one chain per session)
+//   v5 — v4 + events.evidencePhotoPath (camera snapshot per event)
 @Database(entities = [Event::class, Session::class], version = TRACE_DB_VERSION)
 abstract class TraceDatabase : RoomDatabase() {
     abstract fun eventDao(): EventDao
@@ -85,12 +86,19 @@ abstract class TraceDatabase : RoomDatabase() {
             }
         }
 
+        /** v4 → v5: camera snapshot evidence. One nullable column, no rewrite. */
+        val MIGRATION_4_5: Migration = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE events ADD COLUMN evidencePhotoPath TEXT")
+            }
+        }
+
         /**
          * Every migration this build ships. The range
          * [TRACE_DB_OLDEST_SUPPORTED] .. [TRACE_DB_VERSION] must be fully
          * covered — enforced by DatabaseMigrationTest.
          */
-        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_2_3, MIGRATION_3_4)
+        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 
         @Volatile private var INSTANCE: TraceDatabase? = null
 

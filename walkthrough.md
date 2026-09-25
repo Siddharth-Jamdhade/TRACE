@@ -114,8 +114,9 @@ Open Logcat in Android Studio, filter tag `TRACE`. Then:
 3. **Shake the phone hard** → "EVENT SAVED: type=impact" in Logcat
 4. **Clap near the phone** → "EVENT SAVED: type=alarm" in Logcat
 5. **Wave hand in front of camera** → "EVENT SAVED: type=object_moves" in Logcat
-6. **Tap TAG INCIDENT** → choose "Object fell" → a violet `MANUAL` entry is added with its own audio clip.
+6. **Tap TAG INCIDENT** → choose "Object fell" → a violet `MANUAL` entry is added with its own audio clip and its own camera snapshot.
    This is the one detection TRACE cannot make for itself: the sensors prove *that* something moved, only you can say *what* it was.
+   When fusion confirms (shake + clap within 2 s), a green **CONFIRMED banner** flashes above the HUD and auto-hides — TRACE stays silent by design.
 7. **Tap END SESSION** → confirm → capture stops and the status line shows the session totals
 8. **Tap the sessions icon (top-right)** → see events listed in reverse time order
 9. **Type in query box**: "what happened before the alarm?" → get text answer ("list manual tags" also works)
@@ -153,7 +154,7 @@ Open Logcat in Android Studio, filter tag `TRACE`. Then:
 
 ## Known Limitations (hackathon-acceptable)
 
-1. **Evidence clips are audio-only** (.amr) — the "clip" is a copy of the MediaRecorder buffer at the moment of detection. It captures ambient sound but not a video frame. Full video clips would require a separate `VideoCapture` use-case.
+1. **Evidence clips are audio-only** (.amr) plus one **camera snapshot** (.jpg) per event — the "clip" is a copy of the MediaRecorder buffer at the moment of detection, and the snapshot is one auto-captured frame (`CAPTURE_MODE_MINIMIZE_LATENCY`), so it may show the scene just before or after the peak. It is context, not a photograph of the cause. Full video clips would require a separate `VideoCapture` use-case. One snapshot is taken at a time: requests arriving while a save is in flight are dropped rather than queued, so a still never attaches to the wrong event. Snapshots are not yet hash-chained (that is the file-hash stage).
 2. **Fusion is retroactive but not real-time** — when a second sensor fires, previous events in the window are updated to CONFIRMED, but the Timeline screen needs a manual Refresh to show the new status.
 3. **Schema migrations are now real** — `fallbackToDestructiveMigration()` has been removed and v2 → v3 migrates in place. A missing migration fails loudly instead of silently deleting evidence.
 4. **Hash chain race is fixed** — every write goes through `ChainWriter`, which serialises read-tip → insert → hash → update behind a mutex, so simultaneous sensor events can no longer fork the chain.

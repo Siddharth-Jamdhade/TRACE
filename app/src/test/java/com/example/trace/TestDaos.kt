@@ -35,6 +35,14 @@ internal class FakeEventDao : EventDao {
         rows.firstOrNull { it.id == eventId }?.let { update(it.copy(status = newStatus)) }
     }
 
+    override suspend fun updateClipPath(eventId: Long, path: String) {
+        rows.firstOrNull { it.id == eventId }?.let { update(it.copy(evidenceClipPath = path)) }
+    }
+
+    override suspend fun updatePhotoPath(eventId: Long, path: String) {
+        rows.firstOrNull { it.id == eventId }?.let { update(it.copy(evidencePhotoPath = path)) }
+    }
+
     override suspend fun getRecentEvents(sinceTimestamp: Long): List<Event> =
         rows.filter { it.timestamp >= sinceTimestamp }.sortedBy { it.timestamp }
 

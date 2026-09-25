@@ -86,6 +86,7 @@ Every sensor below feeds the same Observation → EventExtractor → FusionEngin
 | Feature | Description |
 |---------|-------------|
 | 🎵 **Audio Evidence Clips** | Real `.amr` audio snapshot saved for every event — stop → copy → restart pattern guarantees playback |
+| 📸 **Camera Snapshots** | One JPEG frame frozen at the moment of each event (and each operator tag), saved alongside the audio clip. Best-effort and independent: a failed snapshot never fails the event, and camera-free sessions simply log that there is none |
 | 📊 **Incident Timeline** | Chronological log with color-coded status pills (🟢 CONFIRMED / 🟡 UNCONFIRMED / 🔴 REJECTED / 🟣 MANUAL) |
 | ✋ **Manual Incident Tag** | The operator asserts what happened — `TAG INCIDENT` on the live view offers the sensor vocabulary (object fell, impact, door, alarm, person, lights, other). Recorded as source `manual` with status `MANUAL`: full chain evidence, but explicitly *not* a sensor verdict |
 | 🎥 **Smart Video Import** | Pick random video clips → TRACE sorts by creation timestamp → extracts keyframes with ML Kit → adds to timeline |
@@ -96,6 +97,7 @@ Every sensor below feeds the same Observation → EventExtractor → FusionEngin
 |---------|-------------|
 | 📡 **Live Sensor HUD** | Real-time `📷 45%  🔊 12%  📳 78%` readouts on the main screen — watch the AI sensing live |
 | 🔔 **Silent Alerts** | A visual-only notification fires when an incident is `CONFIRMED`. TRACE never plays a sound or vibrates during a session |
+| 🟩 **CONFIRMED Banner** | The live view shows a brief green banner when fusion agrees — the in-app cue the silent notification channel was always paired with. Visual only, auto-hides |
 | 📟 **Session Status Chip** | The app bar always states the capture state: `● REC 04:12` with a live timer, `🔒 LOCKED` when evidence is sealed, or `IDLE` — no ambiguity about whether TRACE is recording |
 | 🔒 **Lock Evidence** | One-tap sealing — stops all new recordings, locks the hash chain as a permanent legal artifact. The dashboard status chip shows `🔒 LOCKED` while it is armed |
 | ▶️ **Start / End Session** | An explicit lifecycle replaces "recording starts when the app opens". The chip reads `IDLE` until a session is armed, so `● REC` always means evidence is actually being captured |

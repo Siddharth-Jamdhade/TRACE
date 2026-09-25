@@ -21,6 +21,8 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.core.UseCase
@@ -142,6 +144,7 @@ class MainActivity : AppCompatActivity() {
 
     private val TEMP_AUDIO_FILE = "temp_audio.amr"
     private val EVIDENCE_DIR = "TRACE"
+    private val EVIDENCE_EXT = ".amr"
     private val AMPLITUDE_POLL_MS = 150L
 
     /** Number of polls (~1 s at [AMPLITUDE_POLL_MS]) between mic reopen attempts. */
@@ -171,6 +174,21 @@ class MainActivity : AppCompatActivity() {
     private var previousFrame: ByteArray? = null
     // Dedicated single-thread executor so ImageAnalysis never blocks the main thread.
     private val cameraExecutor = Executors.newSingleThreadExecutor()
+
+    //
+    // Snapshot capture (still-image evidence).
+    //
+    // Bound only while a session that selected the camera is armed — a preview
+    // is not evidence, and nothing may be photographed outside an armed session.
+    // One in-flight capture at a time: a busy flag drops the requests that arrive
+    // while a save is running rather than queueing stills from an event seconds
+    // past, which would attach the wrong moment to the record.
+    //
+    private var imageCapture: ImageCapture? = null
+
+    /** True while a snapshot save is running; further requests are dropped. */
+    @Volatile
+    private var capturePending = false
 
     // ── Feature C: Evidence Lock ──────────────────────────────────────────
     // Shared with TimelineActivity + VideoImportActivity via [EvidenceLock].
@@ -204,6 +222,12 @@ class MainActivity : AppCompatActivity() {
 
     /** App bar status refresh interval. */
     private val STATUS_TICK_MS = 1_000L
+
+    /** How long the CONFIRMED banner stays up before auto-hiding. */
+    private val BANNER_VISIBLE_MS = 4_000L
+
+    /** Cancels the pending banner hide when a newer confirm replaces it. */
+    private var bannerHide: Job? = null
 
     // ── Event cooldown ────────────────────────────────────────────────────
     // ConcurrentHashMap because camera (cameraExecutor thread), audio (main), and
@@ -428,6 +452,9 @@ class MainActivity : AppCompatActivity() {
                 eventCount = count
                 if (existing != null) {
                     Log.i("TRACE", "Resumed session ${existing.id} with ${armedSensorIds.size} sensors")
+                    // Evidence captured while this screen was dead must not be
+                    // attributed to the wrong session: the flag is per-process.
+                    capturePending = false
                     // The buffer died with the previous instance; rebuild the tail
                     // from the chain so entries recorded while the screen was away
                     // are visible again.
@@ -522,6 +549,8 @@ class MainActivity : AppCompatActivity() {
                 activeSession = null
                 armedSensorIds = emptySet()
                 eventCount = 0
+                bannerHide?.cancel()
+                binding.confirmedBanner.visibility = View.GONE
                 refreshCaptureLayout()
 
                 appendLog(
@@ -565,6 +594,17 @@ class MainActivity : AppCompatActivity() {
         if (SensorRegistry.AUDIO.id in ids) startMicMonitoring() else stopMicMonitoring()
         refreshCaptureLayout()
 
+        // Snapshot evidence needs its pipe bound before the first event can fire;
+        // refreshCaptureLayout may just have rebound without it on a resume.
+        if (SensorRegistry.CAMERA.id in ids) {
+            bindCamera(
+                withAnalysis = true,
+                wantSnapshot = true
+            )
+        } else {
+            imageCapture = null
+        }
+
         // Name the selected pipelines this device cannot feed BEFORE they can be
         // mistaken for a quiet scene. startCapture runs on the main thread.
         val missing = armedSensorIds
@@ -607,10 +647,17 @@ class MainActivity : AppCompatActivity() {
         if (!showPreview) binding.tvSensorPanelList.text = sensorPanelText()
 
         if (showPreview && allPermissionsGranted()) {
-            // Analysis only while a session that wants it is armed: the preview on
-            // its own costs nothing and is not evidence.
-            bindCamera(withAnalysis = capturing && cameraSelected)
+            // Analysis and snapshot only while a session that wants them is armed:
+            // the preview on its own costs nothing and is not evidence.
+            bindCamera(
+                withAnalysis = capturing && cameraSelected,
+                wantSnapshot = capturing && cameraSelected
+            )
         } else {
+            // Nothing may be photographed outside an armed session — a preview
+            // alone must never leave a usable capture pipe bound.
+            imageCapture = null
+            capturePending = false
             unbindCamera()
         }
     }
@@ -875,7 +922,7 @@ class MainActivity : AppCompatActivity() {
      * armed there is nothing to analyse, and in a session that does not capture the
      * camera there is nothing that may be analysed.
      */
-    private fun bindCamera(withAnalysis: Boolean) {
+    private fun bindCamera(withAnalysis: Boolean, wantSnapshot: Boolean) {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         cameraProviderFuture.addListener({
             try {
@@ -887,6 +934,12 @@ class MainActivity : AppCompatActivity() {
 
                 val useCases = mutableListOf<UseCase>(preview)
                 if (withAnalysis) useCases += buildImageAnalysis()
+                if (wantSnapshot) {
+                    imageCapture = ImageCapture.Builder()
+                        .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                        .build()
+                    useCases += imageCapture!!
+                }
 
                 cameraProvider.unbindAll()
                 cameraProvider.bindToLifecycle(
@@ -1410,8 +1463,15 @@ class MainActivity : AppCompatActivity() {
             // Step 6: save a copy of the current audio clip as evidence (best-effort)
             val clipPath = saveEvidenceClip(newId)
             if (clipPath != null) {
-                database.eventDao().update(finalEvent.copy(evidenceClipPath = clipPath))
+                database.eventDao().updateClipPath(newId, clipPath)
             }
+
+            // Step 6b: freeze one camera frame as still-image evidence (best-effort;
+            // audio and image fail independently, and neither blocks the other)
+            if (finalEvent.status == "CONFIRMED") {
+                runOnUiThread { showConfirmedBanner(eventType, finalEvent.confidence) }
+            }
+            takeEventSnapshot(newId)
 
             // Step 7: retroactively update the status of all events in the window
             // so that a motion event recorded 1 s ago gets promoted to CONFIRMED when
@@ -1457,7 +1517,7 @@ class MainActivity : AppCompatActivity() {
 
         try {
             val destDir = File(getExternalFilesDir(null), EVIDENCE_DIR).also { it.mkdirs() }
-            val dest = File(destDir, "evidence_$eventId.amr")
+            val dest = File(destDir, "evidence_$eventId$EVIDENCE_EXT")
             source.copyTo(dest, overwrite = true)
             dest.absolutePath
         } catch (e: Exception) {
@@ -1466,6 +1526,72 @@ class MainActivity : AppCompatActivity() {
         } finally {
             // Always get back to recording: a missing clip must never stop capture.
             openRecorder()
+        }
+    }
+
+    // ── Snapshot evidence ───────────────────────────────────────────────
+
+    /**
+     * Freezes one camera frame as still-image evidence for [eventId].
+     *
+     * Best-effort by design: an event with no photo is still a complete chain
+     * record, and a failed snapshot must never fail the event. One capture at a
+     * time — requests that arrive while a save is running are dropped, because a
+     * queued still from an event seconds past would attach the wrong moment.
+     */
+    private fun takeEventSnapshot(eventId: Long) {
+        val capture = imageCapture
+        if (capture == null) {
+            appendLog(SessionLog.Kind.INFO, "no snapshot — camera not capturing in this session")
+            return
+        }
+        if (capturePending) return   // the wrong-moment guard, not an error
+        capturePending = true
+
+        val dest = File(File(getExternalFilesDir(null), EVIDENCE_DIR).apply { mkdirs() },
+            "photo_$eventId.jpg")
+        val opts = ImageCapture.OutputFileOptions.Builder(dest).build()
+
+        capture.takePicture(
+            opts,
+            ContextCompat.getMainExecutor(this),
+            object : ImageCapture.OnImageSavedCallback {
+                override fun onImageSaved(result: ImageCapture.OutputFileResults) {
+                    capturePending = false
+                    val path = result.savedUri?.path ?: dest.absolutePath
+                    appScope.launch {
+                        database.eventDao().updatePhotoPath(eventId, path)
+                        Log.d("TRACE", "Snapshot saved for event $eventId: $path")
+                    }
+                }
+
+                override fun onError(exc: ImageCaptureException) {
+                    capturePending = false
+                    Log.w("TRACE", "Snapshot failed for event $eventId", exc)
+                    appendLog(SessionLog.Kind.INFO, "snapshot failed: ${exc.message}")
+                    // A half-written file must never be discoverable as evidence.
+                    dest.delete()
+                }
+            }
+        )
+    }
+
+    /**
+     * Shows the CONFIRMED banner. Main thread only.
+     *
+     * The live view's in-app cue for the moment fusion agrees: the status chip
+     * keeps ticking, the log records the event, but neither interrupts the way
+     * a green banner does. TRACE stays silent — no sound, no vibration.
+     */
+    private fun showConfirmedBanner(eventType: String, confidence: Float) {
+        binding.confirmedBanner.visibility = View.VISIBLE
+        binding.tvConfirmedText.text =
+            "CONFIRMED · ${eventType.replace("_", " ").replaceFirstChar { it.uppercase() }}" +
+                " · ${"%.0f".format(confidence * 100)}%"
+        bannerHide?.cancel()
+        bannerHide = uiScope.launch {
+            delay(BANNER_VISIBLE_MS)
+            binding.confirmedBanner.visibility = View.GONE
         }
     }
 
@@ -1555,13 +1681,13 @@ class MainActivity : AppCompatActivity() {
             val stored = ChainWriter.append(database.eventDao(), session, tag)
             Log.i("TRACE", "MANUAL TAG: id=${stored.id} type=$type session=${session.id}")
 
-            // An operator tagging *now* is the strongest hint there is that
-            // something is happening right now, so keep the audio around this
-            // moment as an evidence clip (serialised on the audio thread).
+            // Keep the audio around this moment as an evidence clip (serialised on
+            // the audio thread) and freeze one camera frame beside it.
             val clipPath = saveEvidenceClip(stored.id)
             if (clipPath != null) {
-                database.eventDao().update(stored.copy(evidenceClipPath = clipPath))
+                database.eventDao().updateClipPath(stored.id, clipPath)
             }
+            takeEventSnapshot(stored.id)
 
             runOnUiThread {
                 eventCount++

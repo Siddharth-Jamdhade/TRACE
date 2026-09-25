@@ -70,6 +70,14 @@ interface EventDao {
     @Query("UPDATE events SET status = :newStatus WHERE id = :eventId")
     suspend fun updateStatus(eventId: Long, newStatus: String)
 
+    /** Attaches the saved audio clip to [eventId] once the file exists on disk. */
+    @Query("UPDATE events SET evidenceClipPath = :path WHERE id = :eventId")
+    suspend fun updateClipPath(eventId: Long, path: String)
+
+    /** Attaches the saved camera snapshot to [eventId] once the file exists on disk. */
+    @Query("UPDATE events SET evidencePhotoPath = :path WHERE id = :eventId")
+    suspend fun updatePhotoPath(eventId: Long, path: String)
+
     @Query("SELECT * FROM events WHERE timestamp >= :sinceTimestamp ORDER BY timestamp ASC")
     suspend fun getRecentEvents(sinceTimestamp: Long): List<Event>
 

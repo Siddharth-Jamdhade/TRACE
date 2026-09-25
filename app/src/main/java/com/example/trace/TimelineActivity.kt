@@ -162,6 +162,7 @@ class TimelineActivity : AppCompatActivity() {
                         put("motion_confidence", e.motionConfidence?.let { "%.2f".format(it) } ?: "null")
                         put("sensor_breakdown",   e.sensorBreakdown ?: "none")
                         put("evidence_clip",    e.evidenceClipPath ?: "none")
+                        put("evidence_photo",   e.evidencePhotoPath ?: "none")
                         put("hash",             e.hash ?: "none")
                         put("previous_hash",    e.previousHash ?: "none")
                     }

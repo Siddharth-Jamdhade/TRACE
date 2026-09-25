@@ -213,6 +213,36 @@
             android:backgroundTint="?attr/colorPrimary"
             android:visibility="gone" />
 
+        <!-- Camera snapshot: decoded downsampled for review, never the raw file -->
+        <TextView
+            android:id="@+id/tvPhotoStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textColor="@color/trace_text_hint"
+            android:textSize="12sp"
+            android:text="No camera snapshot saved." />
+
+        <Button
+            android:id="@+id/btnViewPhoto"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="VIEW SNAPSHOT"
+            android:textColor="?attr/colorOnPrimary"
+            android:textStyle="bold"
+            android:backgroundTint="?attr/colorPrimary"
+            android:visibility="gone" />
+
+        <ImageView
+            android:id="@+id/ivSnapshot"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:adjustViewBounds="true"
+            android:contentDescription="Evidence snapshot captured at the moment of the event"
+            android:visibility="gone" />
+
         <!-- Hash chain integrity -->
         <TextView
             android:layout_width="match_parent"
