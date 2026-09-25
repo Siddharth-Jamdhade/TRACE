@@ -73,8 +73,59 @@
 
     </LinearLayout>
 
+    <!--
+      Shown INSTEAD of the viewfinder when the armed session captures no camera.
+
+      A blank black preview would read as a broken camera at exactly the moment the
+      app is working as configured, so the space states what is recording instead.
+    -->
+    <LinearLayout
+        android:id="@+id/sensorPanel"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:paddingStart="28dp"
+        android:paddingEnd="28dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@+id/appBar"
+        app:layout_constraintBottom_toTopOf="@+id/hud"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="CAPTURING"
+            android:textColor="?attr/colorPrimary"
+            android:textSize="12sp"
+            android:letterSpacing="0.18"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvSensorPanelList"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:fontFamily="monospace"
+            android:gravity="center"
+            android:lineSpacingExtra="6dp"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="14sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="No camera in this session"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:textSize="12sp" />
+
+    </LinearLayout>
+
     <!-- Semi-transparent HUD overlay pinned to the bottom -->
     <LinearLayout
+        android:id="@+id/hud"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:orientation="vertical"
@@ -144,13 +195,37 @@
             android:textSize="13sp"
             android:fontFamily="monospace"
             android:lineSpacingExtra="4dp"
-            android:text="TRACE ACTIVE -- watching all sensors" />
+            android:text="TRACE IDLE — no session armed, nothing is being recorded" />
+
+        <!--
+          Session lifecycle. Exactly one of these is visible: a session is armed
+          explicitly, and it is never armed for you.
+        -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnStartSession"
+            style="@style/Widget.Material3.Button"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="10dp"
+            android:text="START SESSION"
+            android:textStyle="bold" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnEndSession"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="10dp"
+            android:text="END SESSION"
+            android:textColor="@color/trace_status_rejected"
+            android:visibility="gone"
+            app:strokeColor="@color/trace_status_rejected" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="8dp"
             android:weightSum="2">
 
             <!--

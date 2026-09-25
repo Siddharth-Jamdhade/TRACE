@@ -66,6 +66,15 @@ Every sensor below feeds the same Observation → EventExtractor → FusionEngin
 - **Proximity** — 5 cm range, designed for screen-off during calls, not incident detection.
 - **GPS** — coarse, battery-hungry, and location is not part of the physical-incident signature. |
 
+### Session Lifecycle
+| Feature | Description |
+|---------|-------------|
+| ▶️ **Arming Sheet** | A session begins only when the operator starts one. Describe the work ("door inspection") and the sensors that carry evidence for it are pre-selected as toggles to review. *Skip* captures everything |
+| 🧠 **Sensor Suggestion** | Keyword mapping, not a model: "door" → magnetometer + barometer + audio + motion + camera, because hinges and frames are steel and a swinging door pulses room pressure. **Anything unrecognised captures every sensor** — missing evidence cannot be recovered, extra evidence can be ignored |
+| 🎛️ **Per-Session Sensor Set** | The chosen set is part of the hashed session header, so it is fixed for the session and cannot be quietly widened later. Only those pipelines are started |
+| 🎥 **Camera-Free Sessions** | With the camera toggled off, the viewfinder is replaced by the list of sensors that *are* capturing — and the camera is never bound at all. A black preview would look like a fault at the moment the app is working as configured |
+| ⏹️ **Explicit End** | *End Session* asks first (one tap must not seal a recording), stops capture and closes the session as `COMPLETED` with its duration, event count and confirmed count |
+
 ### Intelligence
 | Feature | Description |
 |---------|-------------|
@@ -89,6 +98,7 @@ Every sensor below feeds the same Observation → EventExtractor → FusionEngin
 | 🔔 **Silent Alerts** | A visual-only notification fires when an incident is `CONFIRMED`. TRACE never plays a sound or vibrates during a session |
 | 📟 **Session Status Chip** | The app bar always states the capture state: `● REC 04:12` with a live timer, `🔒 LOCKED` when evidence is sealed, or `IDLE` — no ambiguity about whether TRACE is recording |
 | 🔒 **Lock Evidence** | One-tap sealing — stops all new recordings, locks the hash chain as a permanent legal artifact. The dashboard status chip shows `🔒 LOCKED` while it is armed |
+| ▶️ **Start / End Session** | An explicit lifecycle replaces "recording starts when the app opens". The chip reads `IDLE` until a session is armed, so `● REC` always means evidence is actually being captured |
 
 ---
 
@@ -234,6 +244,8 @@ Grant all permissions when prompted:
 
 | Action | Result |
 |--------|--------|
+| Tap **START SESSION** | Arming sheet: describe the work, review the suggested sensors, arm. Nothing is recorded before this |
+| Tap **END SESSION** | Confirms, stops capture, closes the session as `COMPLETED` with its aggregates |
 | Shake phone hard | 📳 `impact` event created |
 | Clap near mic | 🔊 `abnormal_sound` event |
 | Wave hand at camera | 📷 `object_moves` event |
@@ -278,6 +290,8 @@ healthy one look broken.
 | **Imported footage** | Video import creates its own `Imported footage` session, keeping provenance obvious and its chain independent of any live session |
 | **Interrupted sessions** | A crash or force-stop leaves the session `ACTIVE`; the next launch closes it as `INTERRUPTED` with its duration and counters filled in |
 | **Fusion isolation** | The ±2s fusion window only ever reads the current session, so overlapping timestamps in imported footage cannot confirm a live event |
+| **Armed, never automatic** | No session exists until the operator starts one, and the dashboard says `IDLE` until then. Closing the app mid-session and reopening it resumes the same recording instead of silently starting a second one |
+| **Fixed sensor set** | The armed set is part of the header hash, so widening it mid-session would invalidate the chain that already anchors on it |
 | **Human assertions** | A `manual` tag is verified by the same chain as any sensor event — moving it between sessions breaks verification — but it is skipped by the fusion verdict, so an operator's claim is never laundered into a sensor conclusion |
 
 ---

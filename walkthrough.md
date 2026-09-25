@@ -109,17 +109,25 @@ Open Logcat in Android Studio, filter tag `TRACE`. Then:
 **Adjust these 5 constants in [`MainActivity.kt`](file:///c:/Users/SIDDHARTH/AndroidStudioProjects/TRACE/app/src/main/java/com/example/trace/MainActivity.kt) lines 72–79** to match your actual device readings.
 
 ### Step 3 — Run the Demo Sequence
-1. **Main screen**: camera feed shows, status bar updates every 150 ms
-2. **Shake the phone hard** → "EVENT SAVED: type=impact" in Logcat
-3. **Clap near the phone** → "EVENT SAVED: type=alarm" in Logcat
-4. **Wave hand in front of camera** → "EVENT SAVED: type=object_moves" in Logcat
-5. **Tap TAG INCIDENT** → choose "Object fell" → a violet `MANUAL` entry is added with its own audio clip.
+1. **Main screen**: preview shows, chip reads `IDLE`, status line says *nothing is being recorded*. That is correct — TRACE does not capture until you arm it.
+2. **Tap START SESSION** → type a nature of work (try `door inspection`) → watch the sensor chips re-select themselves → **Start session**. Chip turns into `● REC 00:04`
+3. **Shake the phone hard** → "EVENT SAVED: type=impact" in Logcat
+4. **Clap near the phone** → "EVENT SAVED: type=alarm" in Logcat
+5. **Wave hand in front of camera** → "EVENT SAVED: type=object_moves" in Logcat
+6. **Tap TAG INCIDENT** → choose "Object fell" → a violet `MANUAL` entry is added with its own audio clip.
    This is the one detection TRACE cannot make for itself: the sensors prove *that* something moved, only you can say *what* it was.
-6. **Tap the sessions icon (top-right)** → see events listed in reverse time order
-7. **Type in query box**: "what happened before the alarm?" → get text answer ("list manual tags" also works)
-8. **Tap an event** → see confidence bars, Confirm / Reject buttons
-9. **Tap Confirm** → status badge turns green immediately
-10. **Tap "Play Evidence Clip"** → should play the audio captured at that moment
+7. **Tap END SESSION** → confirm → capture stops and the status line shows the session totals
+8. **Tap the sessions icon (top-right)** → see events listed in reverse time order
+9. **Type in query box**: "what happened before the alarm?" → get text answer ("list manual tags" also works)
+10. **Tap an event** → see confidence bars, Confirm / Reject buttons
+11. **Tap Confirm** → status badge turns green immediately
+12. **Tap "Play Evidence Clip"** → should play the audio captured at that moment
+
+**Arming variants worth demoing**
+- Type `shelf restock` → movement/camera/audio/linear, magnetometer off.
+- Type something meaningless (`banana`) → *every* sensor stays on, and the sheet says why: an unrecognised description must never guess narrow.
+- Turn the camera chip off, then start → the viewfinder is replaced by the list of sensors that are capturing, and the camera is never bound.
+- Tap START SESSION twice quickly in a row → one session, not two.
 
 ### Step 4 — Verify Fusion Behaviour
 - **Single action** (shake only, no clap) → status should be `UNCONFIRMED`
@@ -149,3 +157,5 @@ Open Logcat in Android Studio, filter tag `TRACE`. Then:
 4. **Hash chain race is fixed** — every write goes through `ChainWriter`, which serialises read-tip → insert → hash → update behind a mutex, so simultaneous sensor events can no longer fork the chain.
 5. **Recorder concurrency is fixed** — the `MediaRecorder` is owned by a single dedicated thread, so the amplitude loop cannot poll `maxAmplitude()` while a clip save stops/recreates the recorder. A failed clip freeze now reopens the mic instead of killing audio detection for the rest of the session.
 6. **Manual tags are claims, not measurements** — a `manual` event joins its session's hash chain exactly like a sensor event, but `FusionEngine` keeps human assertions out of its source count. One operator tap therefore cannot look like two independent sensors agreeing, and the retroactive status pass leaves the tag's `MANUAL` status alone.
+7. **Capture still stops when the screen sleeps** — backgrounding the app unregisters the sensors (`onPause`) and CameraX is lifecycle-bound, so a session shows `● REC` on return but was not capturing while backgrounded. Real background capture needs the foreground service, which is still not built.
+8. **The bottom quarter of the dashboard is still just a status line** — the spec's scrolling live log tail and the structured event list are not built yet. What exists is the two-line status bar plus the per-event HUD readouts.

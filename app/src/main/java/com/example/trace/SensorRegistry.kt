@@ -83,6 +83,16 @@ object SensorRegistry {
     fun byId(id: String): SensorSpec? =
         ALL.firstOrNull { it.id == id } ?: NON_SENSOR.firstOrNull { it.id == id }
 
+    /**
+     * The "|"-separated set string stored on a [Session], in registry order.
+     *
+     * The format matters beyond tidiness: [Session.sensorSet] is inside the
+     * hashed session header, so the same selection must always serialise to the
+     * same string or the header check would fail.
+     */
+    fun sensorSetOf(ids: Collection<String>): String =
+        ALL.map { it.id }.filter { it in ids }.joinToString("|")
+
     fun iconFor(source: String): String = byId(source)?.icon ?: "❓"
 
     fun labelFor(source: String): String =

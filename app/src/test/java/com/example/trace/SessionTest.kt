@@ -153,12 +153,14 @@ class SessionTest {
     }
 
     @Test
-    fun concurrentEnsureCallsShareOneSession() {
+    fun concurrentStartCallsShareOneSession() {
         runBlocking {
             val sessions = FakeSessionDao()
 
+            // A double tap on "Start session" must not record one walk around the
+            // site as two sessions.
             val created = (0 until 8)
-                .map { async(Dispatchers.Default) { SessionManager.ensureActiveSession(sessions) } }
+                .map { async(Dispatchers.Default) { SessionManager.startSession(sessions) } }
                 .awaitAll()
 
             assertEquals("every caller must get the same session", 1, created.map { it.id }.toSet().size)
@@ -167,11 +169,85 @@ class SessionTest {
     }
 
     @Test
+    fun startSessionRecordsTheOperatorsChoices() {
+        runBlocking {
+            val sessions = FakeSessionDao()
+            val sensorSet = SensorRegistry.sensorSetOf(listOf("door"))
+
+            val session = SessionManager.startSession(
+                sessions,
+                natureOfWork = "door inspection",
+                sensorSet = sensorSet
+            )
+
+            assertEquals("door inspection", session.natureOfWork)
+            assertEquals(sensorSet, session.sensorSet)
+            assertEquals(Session.STATE_ACTIVE, session.state)
+            // The header hash must cover the description and the sensor set, so both
+            // are fixed for the life of the session.
+            assertEquals(HashChain.computeSessionHash(session), session.sessionHash)
+            assertEquals(session.id, SessionManager.currentSession(sessions)?.id)
+        }
+    }
+
+    @Test
+    fun nothingIsActiveBeforeArming() {
+        runBlocking {
+            val sessions = FakeSessionDao()
+            assertNull("capture must be idle until the operator arms a session",
+                SessionManager.currentSession(sessions))
+        }
+    }
+
+    @Test
+    fun anEndedSessionIsNoLongerActive() {
+        runBlocking {
+            val sessions = FakeSessionDao()
+            val events = FakeEventDao()
+            val session = SessionManager.startSession(sessions, natureOfWork = "first walk")
+
+            SessionManager.endSession(sessions, events, session.id)
+            assertNull("a closed session must not be resumed by accident",
+                SessionManager.currentSession(sessions))
+
+            // Re-arming starts a genuinely new session, not the finished one.
+            val second = SessionManager.startSession(sessions, natureOfWork = "second walk")
+            assertNotEquals(session.id, second.id)
+            assertEquals("second walk", second.natureOfWork)
+        }
+    }
+
+    @Test
+    fun consecutiveSessionsKeepIndependentChains() {
+        runBlocking {
+            val sessions = FakeSessionDao()
+            val events = FakeEventDao()
+
+            val first = SessionManager.startSession(sessions, natureOfWork = "first")
+            repeat(2) { ChainWriter.append(events, first, event(first.id, it)) }
+            SessionManager.endSession(sessions, events, first.id)
+
+            val second = SessionManager.startSession(sessions, natureOfWork = "second")
+            repeat(2) { ChainWriter.append(events, second, event(second.id, it + 10)) }
+
+            assertTrue(HashChain.verifySession(first, events.getEventsForSession(first.id)))
+            assertTrue(
+                "the second session must anchor on its own header, not carry the first's tail",
+                HashChain.verifySession(second, events.getEventsForSession(second.id))
+            )
+            assertEquals(
+                second.sessionHash,
+                events.getEventsForSession(second.id).first().previousHash
+            )
+        }
+    }
+
+    @Test
     fun endSessionFillsAggregatesWithoutTouchingTheHeader() {
         runBlocking {
             val sessions = FakeSessionDao()
             val events = FakeEventDao()
-            val session = SessionManager.ensureActiveSession(sessions)
+            val session = SessionManager.startSession(sessions)
 
             ChainWriter.append(events, session, event(session.id, 0, status = "CONFIRMED"))
             ChainWriter.append(events, session, event(session.id, 1))
@@ -198,7 +274,7 @@ class SessionTest {
             ChainWriter.append(events, orphan, event(orphan.id, 0, status = "CONFIRMED"))
 
             // Owned by the current process.
-            val current = SessionManager.ensureActiveSession(sessions)
+            val current = SessionManager.startSession(sessions)
 
             val recovered = SessionManager.recoverInterruptedSessions(sessions, events)
 

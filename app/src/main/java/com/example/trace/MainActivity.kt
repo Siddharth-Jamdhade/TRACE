@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.util.Size
+import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -22,6 +23,7 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
+import androidx.camera.core.UseCase
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
@@ -82,6 +84,14 @@ class MainActivity : AppCompatActivity() {
      *
      * Written from [appScope] and read from the UI thread by the status chip, so
      * it is volatile. Only ever holds a fully-hashed session.
+     */
+    /**
+     * The session currently being recorded into, or null when idle.
+     *
+     * [Volatile] because whether an observation is kept or dropped is decided on
+     * whichever thread produced it — camera analysis, the audio poll loop or the
+     * UI thread — while the session is armed and ended on the main thread. Only
+     * ever holds a fully-hashed session.
      */
     @Volatile
     private var activeSession: Session? = null
@@ -152,6 +162,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var linearListener: SensorEventListener
     private lateinit var gyroListener: SensorEventListener
     private lateinit var stepListener: SensorEventListener
+    private lateinit var lightListener: SensorEventListener
+    private lateinit var sigMotionListener: SensorEventListener
     private var sigMotionTriggeredAt = 0L
 
     // ── Camera analysis ───────────────────────────────────────────────────
@@ -203,6 +215,19 @@ class MainActivity : AppCompatActivity() {
 
     /** The open manual-tag chooser, if any. Stops a double tap stacking two dialogs. */
     private var tagDialog: AlertDialog? = null
+
+    /**
+     * [SensorRegistry] ids the armed session captures from.
+     *
+     * Fixed for the life of the session, because the set is part of the hashed
+     * session header (see [Session.sensorSet]) — changing it mid-session would
+     * invalidate the chain that already anchors on it.
+     */
+    private var armedSensorIds: Set<String> = emptySet()
+
+    /** True while the audio poll loop should be running. Audio thread reads it. */
+    @Volatile
+    private var micActive = false
 
     /**
      * What an operator can assert they saw.
@@ -310,15 +335,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Load existing event count from DB
-        appScope.launch {
-            val count = database.eventDao().getAllEvents().size
-            runOnUiThread {
-                eventCount = count
-                updateStatusBar()
-            }
-        }
-
         binding.btnTagIncident.setOnClickListener {
             showTagDialog()
         }
@@ -327,8 +343,18 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, VideoImportActivity::class.java))
         }
 
-        if (allPermissionsGranted()) startTRACE()
-        else ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, PERMISSION_REQUEST_CODE)
+        binding.btnStartSession.setOnClickListener { showArmingSheet() }
+        binding.btnEndSession.setOnClickListener { confirmEndSession() }
+
+        // Render the un-armed state before anything asynchronous happens: the app
+        // starts idle and must say so, not claim to be watching sensors.
+        updateSessionUi()
+
+        if (allPermissionsGranted()) {
+            onCaptureReady()
+        } else {
+            ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, PERMISSION_REQUEST_CODE)
+        }
     }
 
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
@@ -342,23 +368,31 @@ class MainActivity : AppCompatActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == PERMISSION_REQUEST_CODE) {
-            if (allPermissionsGranted()) startTRACE()
-            else binding.statusText.text = "Permissions denied. TRACE needs Camera + Mic to operate."
+            if (allPermissionsGranted()) {
+                onCaptureReady()
+            } else {
+                binding.statusText.text = "Permissions denied. TRACE needs Camera + Mic to operate."
+            }
         }
     }
 
-    private fun startTRACE() {
-        updateStatusBar()
-        startCamera()
-        startMicMonitoring()
-        startMotionMonitoring()
-        startExtendedSensors()
+    /**
+     * Everything that needs permissions, run once they exist.
+     *
+     * Note what does NOT happen here: no session is created and no capture starts.
+     * A session begins only when the operator asks for one, which is what makes the
+     * app bar's REC state truthful.
+     */
+    private fun onCaptureReady() {
+        sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
+        createSensorListeners()
         Log.i("TRACE", "Sensor availability:\n${SensorRegistry.availabilityReport(sensorManager)}")
 
-        // Stage 1: recording still starts with the app (the arming sheet lands in
-        // Stage 4), but every event now belongs to a session. Any session left
-        // ACTIVE by a previous run is closed as INTERRUPTED here.
+        // Preview only, so the operator can point the phone before arming.
+        refreshCaptureLayout()
+
         appScope.launch {
+            // A session left ACTIVE by a process that died is closed as INTERRUPTED.
             val recovered = SessionManager.recoverInterruptedSessions(
                 database.sessionDao(),
                 database.eventDao()
@@ -367,22 +401,210 @@ class MainActivity : AppCompatActivity() {
                 Log.i("TRACE", "Recovered $recovered interrupted session(s) from a previous run")
             }
 
-            // Open this run's session straight away: the app bar needs a real state
-            // to show, and no observation should ever arrive without a chain to join.
-            activeSession = SessionManager.ensureActiveSession(database.sessionDao())
-            runOnUiThread { updateSessionStatus() }
+            // Re-arm the session this process is already recording into, if any.
+            // This is the ordinary case for an activity re-creation (a palette
+            // change), where the recording must survive the new instance.
+            val existing = SessionManager.currentSession(database.sessionDao())
+            val count = existing?.let { database.eventDao().countEventsForSession(it.id) } ?: 0
+
+            runOnUiThread {
+                activeSession = existing
+                armedSensorIds = existing?.sensorIds?.toSet() ?: emptySet()
+                eventCount = count
+                if (existing != null) {
+                    Log.i("TRACE", "Resumed session ${existing.id} with ${armedSensorIds.size} sensors")
+                    startCapture()
+                }
+                updateSessionUi()
+            }
         }
     }
 
+    // ── Session lifecycle ─────────────────────────────────────────────────
+
+    /** Opens the arming sheet. The sheet collects the description and sensor set. */
+    private fun showArmingSheet() {
+        if (activeSession != null) return   // already recording
+        ArmingSheet().apply {
+            onArm = { natureOfWork, sensorIds -> startSession(natureOfWork, sensorIds) }
+        }.show(supportFragmentManager, "arming")
+    }
+
+    /**
+     * Opens the session and arms capture with the operator's sensor selection.
+     *
+     * [SessionManager.startSession] returns the existing session unchanged when one
+     * is already open, so a double tap on *Start session* cannot produce two
+     * recordings of one walk around the site.
+     */
+    private fun startSession(natureOfWork: String, sensorIds: List<String>) {
+        if (sensorIds.isEmpty()) return
+
+        appScope.launch {
+            val session = SessionManager.startSession(
+                database.sessionDao(),
+                natureOfWork = natureOfWork,
+                sensorSet = SensorRegistry.sensorSetOf(sensorIds)
+            )
+
+            runOnUiThread {
+                activeSession = session
+                armedSensorIds = session.sensorIds.toSet()
+                eventCount = 0
+                lastEventTime.clear()
+                startCapture()
+                updateSessionUi()
+            }
+        }
+    }
+
+    /** End of session, behind a confirmation: one tap must not seal a recording. */
+    private fun confirmEndSession() {
+        val session = activeSession ?: return
+        val elapsed = formatElapsed(System.currentTimeMillis() - session.startedAt)
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("End this session?")
+            .setMessage(
+                "Recording stops and the session closes as COMPLETED after $elapsed, " +
+                    "with $eventCount event(s).\n\nNothing is deleted — it stays reviewable " +
+                    "in Previous Sessions, and its chain stays verifiable."
+            )
+            .setNegativeButton("Keep recording", null)
+            .setPositiveButton("End session") { _, _ -> endSession() }
+            .show()
+    }
+
+    private fun endSession() {
+        val session = activeSession ?: return
+        stopCapture()
+
+        appScope.launch {
+            val closed = SessionManager.endSession(
+                database.sessionDao(),
+                database.eventDao(),
+                session.id
+            )
+
+            runOnUiThread {
+                activeSession = null
+                armedSensorIds = emptySet()
+                eventCount = 0
+                refreshCaptureLayout()
+                updateSessionUi()
+
+                // Written last: updateSessionUi() refreshes the idle status line.
+                binding.statusText.text = if (closed != null) {
+                    "Session ended · ${closed.eventCount} events · ${closed.confirmedCount} confirmed · " +
+                        formatElapsed(closed.durationMs ?: 0L)
+                } else {
+                    "Session ended."
+                }
+            }
+        }
+    }
+
+    /**
+     * Starts every pipeline the armed sensor set contains.
+     *
+     * Resets the rolling baselines and the frame/camera state first: the app may
+     * have been idle for a while, and a stale EWMA or a frame from ten minutes ago
+     * would fire a large false event in the first second of a new session.
+     */
+    private fun startCapture() {
+        val ids = armedSensorIds
+        previousFrame = null
+        baseline.resetAll()
+        lastX = Float.NaN
+        lastY = Float.NaN
+        lastZ = Float.NaN
+
+        registerArmedSensors()
+        if (SensorRegistry.AUDIO.id in ids) startMicMonitoring() else stopMicMonitoring()
+        refreshCaptureLayout()
+
+        Log.i("TRACE", "Capture armed: ${ids.joinToString(", ")}")
+    }
+
+    /** Stops capture without touching the session record. */
+    private fun stopCapture() {
+        unregisterArmedSensors()
+        stopMicMonitoring()
+    }
+
+    // ── Capture layout ────────────────────────────────────────────────────
+
+    /**
+     * Decides what fills the space above the HUD.
+     *
+     *  - idle                    → live preview, so the operator can aim
+     *  - armed with the camera    → preview + frame analysis
+     *  - armed without the camera → the active-sensor panel
+     *
+     * The last case matters: a black viewfinder in a camera-free session looks like
+     * a broken app at the exact moment it is working as configured.
+     */
+    private fun refreshCaptureLayout() {
+        val capturing = activeSession != null
+        val cameraSelected = SensorRegistry.CAMERA.id in armedSensorIds
+        val showPreview = !capturing || cameraSelected
+
+        binding.cameraPreview.visibility = if (showPreview) View.VISIBLE else View.GONE
+        binding.sensorPanel.visibility = if (showPreview) View.GONE else View.VISIBLE
+
+        if (!showPreview) binding.tvSensorPanelList.text = sensorPanelText()
+
+        if (showPreview && allPermissionsGranted()) {
+            // Analysis only while a session that wants it is armed: the preview on
+            // its own costs nothing and is not evidence.
+            bindCamera(withAnalysis = capturing && cameraSelected)
+        } else {
+            unbindCamera()
+        }
+    }
+
+    /** "📷 Camera", one per armed sensor, in registry order. */
+    private fun sensorPanelText(): String =
+        SensorRegistry.ALL
+            .filter { it.id in armedSensorIds }
+            .joinToString("\n") { "${it.icon}  ${SensorRegistry.labelFor(it.id)}" }
+            .ifEmpty { "No sensors selected" }
+
     /** Updates the on-screen status bar — this is what judges see on the phone. */
     private fun updateStatusBar(lastEventType: String? = null, lastStatus: String? = null) {
+        val armed = activeSession != null
         val line1 = when {
             evidenceLocked.get() -> "🔒 EVIDENCE LOCKED — new observations are dropped"
+            !armed -> "TRACE IDLE — no session armed, nothing is being recorded"
             lastEventType != null -> "LAST EVENT: $lastEventType  [$lastStatus]"
-            else -> "TRACE ACTIVE — watching all sensors"
+            else -> "TRACE ACTIVE — capturing from ${armedSensorIds.size} sensor(s)"
         }
-        val line2 = "Events recorded: $eventCount   |   TAG marks an incident you saw"
+        val line2 = if (armed) {
+            "Events recorded: $eventCount   |   TAG marks an incident you saw"
+        } else {
+            "Tap START SESSION to arm a recording"
+        }
         binding.statusText.text = "$line1\n$line2"
+    }
+
+    /**
+     * Reflects the session lifecycle on the live view: which of Start / End is
+     * offered, and whether the human-assertion control can do anything.
+     */
+    private fun updateSessionUi() {
+        val armed = activeSession != null
+
+        binding.btnStartSession.visibility = if (armed) View.GONE else View.VISIBLE
+        binding.btnEndSession.visibility = if (armed) View.VISIBLE else View.GONE
+
+        // A tag is evidence, so it needs a session to anchor on. The explicit
+        // backgroundTint in the layout does not respond to the disabled state, so
+        // alpha is what makes "cannot be used" visible.
+        binding.btnTagIncident.isEnabled = armed
+        binding.btnTagIncident.alpha = if (armed) 1f else 0.4f
+
+        updateStatusBar()
+        updateSessionStatus()
     }
 
     // ── App bar: session status chip ──────────────────────────────────────
@@ -459,11 +681,13 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         statusTicker?.cancel()
-        // Unregister while screen is off to save battery.
-        if (::sensorManager.isInitialized) {
-            sensorManager.unregisterListener(sensorListener)
-            unregisterExtendedListeners()
-        }
+
+        // Detach while the screen is off. The session stays open — pausing is not
+        // ending a recording. The mic is released too, because Android mutes
+        // background capture anyway: a live recorder would keep producing silence
+        // and hand useless "evidence" clips to events that fire on return.
+        unregisterArmedSensors()
+        stopMicMonitoring()
     }
 
     override fun onResume() {
@@ -484,38 +708,18 @@ class MainActivity : AppCompatActivity() {
 
         startStatusTicker()
 
-        // Re-register when app comes back to foreground.
-        if (::sensorManager.isInitialized && extendedSensorsStarted) {
-            val accel = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-            if (accel != null) {
-                sensorManager.registerListener(sensorListener, accel, SensorManager.SENSOR_DELAY_GAME)
-            }
-            if (::magnetListener.isInitialized) {
-                registerIfAvailable(Sensor.TYPE_MAGNETIC_FIELD, magnetListener, SensorManager.SENSOR_DELAY_GAME)
-            }
-            if (::linearListener.isInitialized) {
-                registerIfAvailable(Sensor.TYPE_LINEAR_ACCELERATION, linearListener, SensorManager.SENSOR_DELAY_GAME)
-            }
-            if (::gyroListener.isInitialized) {
-                registerIfAvailable(Sensor.TYPE_GYROSCOPE, gyroListener, SensorManager.SENSOR_DELAY_GAME)
-            }
+        // Re-attach the armed set when the app comes back to the foreground. The
+        // set cannot have changed while paused — it is fixed for the session — so
+        // this is the same call that arming uses.
+        if (activeSession != null) {
+            registerArmedSensors()
+            if (SensorRegistry.AUDIO.id in armedSensorIds) startMicMonitoring()
         }
-    }
-
-    private var extendedSensorsStarted = false
-
-    private fun unregisterExtendedListeners() {
-        if (!extendedSensorsStarted) return
-        if (::magnetListener.isInitialized) sensorManager.unregisterListener(magnetListener)
-        if (::baroListener.isInitialized) sensorManager.unregisterListener(baroListener)
-        if (::linearListener.isInitialized) sensorManager.unregisterListener(linearListener)
-        if (::gyroListener.isInitialized) sensorManager.unregisterListener(gyroListener)
-        if (::stepListener.isInitialized) sensorManager.unregisterListener(stepListener)
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        if (::sensorManager.isInitialized) sensorManager.unregisterListener(sensorListener)
+        unregisterArmedSensors()
 
         // Stop producing new work before tearing anything down.
         cameraExecutor.shutdown()
@@ -551,37 +755,59 @@ class MainActivity : AppCompatActivity() {
 
     // ── Camera ────────────────────────────────────────────────────────────
 
-    private fun startCamera() {
+    /**
+     * Binds the viewfinder, with frame analysis only when asked for.
+     *
+     * The two modes exist because a preview is not evidence: before a session is
+     * armed there is nothing to analyse, and in a session that does not capture the
+     * camera there is nothing that may be analysed.
+     */
+    private fun bindCamera(withAnalysis: Boolean) {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         cameraProviderFuture.addListener({
             try {
                 val cameraProvider = cameraProviderFuture.get()
 
-                // Use-case 1: visible preview
                 val preview = Preview.Builder().build().also {
                     it.setSurfaceProvider(binding.cameraPreview.surfaceProvider)
                 }
 
-                // Use-case 2: frame analysis for visual change detection
-                @Suppress("DEPRECATION")
-                val imageAnalysis = ImageAnalysis.Builder()
-                    .setTargetResolution(Size(320, 240))   // low-res is enough for diff
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .build()
-                imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
-                    analyzeFrame(imageProxy)
-                }
+                val useCases = mutableListOf<UseCase>(preview)
+                if (withAnalysis) useCases += buildImageAnalysis()
 
                 cameraProvider.unbindAll()
                 cameraProvider.bindToLifecycle(
                     this,
                     CameraSelector.DEFAULT_BACK_CAMERA,
-                    preview,
-                    imageAnalysis
+                    *useCases.toTypedArray()
                 )
             } catch (e: Exception) {
                 Log.e("TRACE", "Camera failed", e)
                 binding.statusText.text = "Camera failed: ${e.message}"
+            }
+        }, ContextCompat.getMainExecutor(this))
+    }
+
+    /** Frame analysis for visual change detection. */
+    private fun buildImageAnalysis(): ImageAnalysis {
+        @Suppress("DEPRECATION")
+        val imageAnalysis = ImageAnalysis.Builder()
+            .setTargetResolution(Size(320, 240))   // low-res is enough for diff
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .build()
+        imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
+            analyzeFrame(imageProxy)
+        }
+        return imageAnalysis
+    }
+
+    /** Releases the camera, e.g. for a session that does not capture it. */
+    private fun unbindCamera() {
+        ProcessCameraProvider.getInstance(this).addListener({
+            try {
+                ProcessCameraProvider.getInstance(this).get().unbindAll()
+            } catch (e: Exception) {
+                Log.w("TRACE", "Camera unbind failed", e)
             }
         }, ContextCompat.getMainExecutor(this))
     }
@@ -634,10 +860,13 @@ class MainActivity : AppCompatActivity() {
      * two places at once.
      */
     private fun startMicMonitoring() {
+        if (micActive) return
+        micActive = true
+
         appScope.launch(audioDispatcher) {
             var pollsSinceReopen = REOPEN_RETRY_POLLS   // try immediately
 
-            while (isActive) {
+            while (isActive && micActive) {
                 if (!recorderStarted) {
                     // Reopen after a failed clip freeze, retried at most once a
                     // second so an unavailable mic cannot spin.
@@ -664,6 +893,20 @@ class MainActivity : AppCompatActivity() {
                 }
                 delay(AMPLITUDE_POLL_MS)
             }
+        }
+    }
+
+    /**
+     * Ends the audio poll loop and closes the recorder on its own thread.
+     *
+     * Closing where the recorder lives keeps the single-owner rule that removed the
+     * stop/poll race. Capture can be armed again later: the loop reopens the
+     * recorder when it next starts.
+     */
+    private fun stopMicMonitoring() {
+        micActive = false
+        appScope.launch(audioDispatcher) {
+            if (!audioTornDown) stopRecorder()
         }
     }
 
@@ -763,14 +1006,65 @@ class MainActivity : AppCompatActivity() {
 
     // ── Motion ────────────────────────────────────────────────────────────
 
-    private fun startMotionMonitoring() {
-        sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
-        val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        if (accelerometer == null) {
-            Log.e("TRACE", "No accelerometer on this device")
-            return
+    /**
+     * Registers every listener the armed session selected, and nothing else.
+     *
+     * One call serves both arming a session and returning to the foreground. The
+     * previous re-registration on resume covered only four of the eight listeners,
+     * so a backgrounded session silently lost the barometer, the light sensor, the
+     * step detector and significant motion until it was next armed.
+     *
+     * Absent hardware is skipped by [registerIfAvailable]: a sensor this device does
+     * not have simply never emits, which fusion already treats like a silent one.
+     */
+    private fun registerArmedSensors() {
+        if (!::sensorManager.isInitialized) return
+        val ids = armedSensorIds
+
+        if (SensorRegistry.MOTION.id in ids) {
+            val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+            if (accelerometer == null) {
+                Log.e("TRACE", "No accelerometer on this device")
+            } else {
+                sensorManager.registerListener(
+                    sensorListener, accelerometer, SensorManager.SENSOR_DELAY_GAME
+                )
+            }
         }
-        sensorManager.registerListener(sensorListener, accelerometer, SensorManager.SENSOR_DELAY_GAME)
+        if (SensorRegistry.MAGNETOMETER.id in ids) {
+            registerIfAvailable(Sensor.TYPE_MAGNETIC_FIELD, magnetListener, SensorManager.SENSOR_DELAY_GAME)
+        }
+        if (SensorRegistry.BAROMETER.id in ids) {
+            registerIfAvailable(Sensor.TYPE_PRESSURE, baroListener, SensorManager.SENSOR_DELAY_UI)
+        }
+        if (SensorRegistry.LIGHT.id in ids) {
+            registerIfAvailable(Sensor.TYPE_LIGHT, lightListener, SensorManager.SENSOR_DELAY_UI)
+        }
+        if (SensorRegistry.LINEAR.id in ids) {
+            registerIfAvailable(Sensor.TYPE_LINEAR_ACCELERATION, linearListener, SensorManager.SENSOR_DELAY_GAME)
+        }
+        if (SensorRegistry.GYROSCOPE.id in ids) {
+            registerIfAvailable(Sensor.TYPE_GYROSCOPE, gyroListener, SensorManager.SENSOR_DELAY_GAME)
+        }
+        if (SensorRegistry.STEP.id in ids) {
+            registerIfAvailable(Sensor.TYPE_STEP_DETECTOR, stepListener, SensorManager.SENSOR_DELAY_UI)
+        }
+        if (SensorRegistry.SIGMOTION.id in ids) {
+            registerIfAvailable(Sensor.TYPE_SIGNIFICANT_MOTION, sigMotionListener, SensorManager.SENSOR_DELAY_UI)
+        }
+    }
+
+    /** Detaches every listener. Safe to call for sensors that were never registered. */
+    private fun unregisterArmedSensors() {
+        if (!::sensorManager.isInitialized) return
+        sensorManager.unregisterListener(sensorListener)
+        if (::magnetListener.isInitialized) sensorManager.unregisterListener(magnetListener)
+        if (::baroListener.isInitialized) sensorManager.unregisterListener(baroListener)
+        if (::lightListener.isInitialized) sensorManager.unregisterListener(lightListener)
+        if (::linearListener.isInitialized) sensorManager.unregisterListener(linearListener)
+        if (::gyroListener.isInitialized) sensorManager.unregisterListener(gyroListener)
+        if (::stepListener.isInitialized) sensorManager.unregisterListener(stepListener)
+        if (::sigMotionListener.isInitialized) sensorManager.unregisterListener(sigMotionListener)
     }
 
     // ── Extended sensor array ───────────────────────────────────────────────
@@ -788,8 +1082,7 @@ class MainActivity : AppCompatActivity() {
      * Uses a rolling EWMA baseline (~30 s) because the absolute Earth-field
      * magnitude varies by hemisphere and building steelwork.
      */
-    private fun startExtendedSensors() {
-        extendedSensorsStarted = true
+    private fun createSensorListeners() {
         magnetListener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
                 val magnitude = kotlin.math.sqrt(
@@ -828,7 +1121,7 @@ class MainActivity : AppCompatActivity() {
          * NEGATIVE lux step. Evidence toward: lights_off (context signal —
          * never confirms alone; fusion only counts it if another sensor fired).
          */
-        val lightListenerOnly = object : SensorEventListener {
+        lightListener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
                 val lux = event.values[0]
                 val delta = baseline.feed("light", lux)
@@ -898,45 +1191,20 @@ class MainActivity : AppCompatActivity() {
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
         }
 
-        // Register whatever hardware actually exists. Absent sensors simply
-        // never emit Observations; fusion treats them like silent sensors.
-        registerIfAvailable(Sensor.TYPE_MAGNETIC_FIELD, magnetListener, SensorManager.SENSOR_DELAY_GAME)
-
-        val barometer = sensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE)
-        val lightSensor = sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT)
-        if (barometer != null && lightSensor == null) {
-            // Device has a barometer but no light sensor: reuse the listener slot.
-            sensorManager.registerListener(baroListener, barometer, SensorManager.SENSOR_DELAY_UI)
-        } else {
-            if (barometer != null) {
-                sensorManager.registerListener(baroListener, barometer, SensorManager.SENSOR_DELAY_UI)
+        /**
+         * SIGNIFICANT MOTION — hardware batched trigger for "device was moved
+         * in a notable way". Evidence toward: person_present. One-shot per
+         * trigger; re-armed after each firing.
+         *
+         * A field rather than a local, so [registerArmedSensors] can re-attach it on
+         * resume like every other listener.
+         */
+        sigMotionListener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                sigMotionTriggeredAt = System.currentTimeMillis()
+                onObservation(Observation("sigmotion", 0.5f, sigMotionTriggeredAt))
             }
-            if (lightSensor != null) {
-                sensorManager.registerListener(lightListenerOnly, lightSensor, SensorManager.SENSOR_DELAY_UI)
-            }
-        }
-
-        registerIfAvailable(Sensor.TYPE_LINEAR_ACCELERATION, linearListener, SensorManager.SENSOR_DELAY_GAME)
-        registerIfAvailable(Sensor.TYPE_GYROSCOPE, gyroListener, SensorManager.SENSOR_DELAY_GAME)
-
-        val stepDetector = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR)
-        if (stepDetector != null) {
-            sensorManager.registerListener(stepListener, stepDetector, SensorManager.SENSOR_DELAY_UI)
-        }
-
-        // SIGNIFICANT MOTION — hardware batched trigger for "device was moved
-        // in a notable way". Evidence toward: person_present. One-shot per
-        // trigger; re-armed after each firing.
-        val sigMotion = sensorManager.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION)
-        if (sigMotion != null) {
-            val sigListener = object : SensorEventListener {
-                override fun onSensorChanged(event: SensorEvent) {
-                    sigMotionTriggeredAt = System.currentTimeMillis()
-                    onObservation(Observation("sigmotion", 0.5f, sigMotionTriggeredAt))
-                }
-                override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-            }
-            sensorManager.registerListener(sigListener, sigMotion, SensorManager.SENSOR_DELAY_UI)
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
         }
     }
 
@@ -956,6 +1224,12 @@ class MainActivity : AppCompatActivity() {
     // ── Observation -> Event -> Storage pipeline ──────────────────────────
 
     private fun onObservation(obs: Observation) {
+        // Nothing is recorded outside a session the operator armed. Capture is
+        // stopped in that state anyway; this is the second line of defence, because
+        // a listener callback already in flight must not be able to open a session
+        // behind the operator's back.
+        val session = activeSession ?: return
+
         // Feature C: if evidence is locked, silently drop new observations
         if (evidenceLocked.get()) return
 
@@ -974,14 +1248,6 @@ class MainActivity : AppCompatActivity() {
         )
 
         appScope.launch {
-
-            // Every event needs a session to anchor on. Normally one already
-            // exists; this lazy call only covers observations that fire while the
-            // session write is still in flight.
-            val session = activeSession ?: SessionManager
-                .ensureActiveSession(database.sessionDao())
-                .also { activeSession = it }
-
             val windowStart = obs.timestamp - FusionEngine.FUSION_WINDOW_MS
             val windowEnd   = obs.timestamp + FusionEngine.FUSION_WINDOW_MS
 
@@ -1134,6 +1400,15 @@ class MainActivity : AppCompatActivity() {
      * the same session anchor, and the same audio evidence clip.
      */
     private fun recordManualTag(type: String, title: String) {
+        // A tag anchors on a session's chain, so there has to be one. The button is
+        // disabled while idle; this covers the race where the session ends between
+        // the tap and the write.
+        val session = activeSession
+        if (session == null) {
+            Toast.makeText(this, "No session armed", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         // A human assertion is evidence, so a locked timeline refuses it for the
         // same reason it refuses an observation.
         if (evidenceLocked.get()) {
@@ -1151,10 +1426,6 @@ class MainActivity : AppCompatActivity() {
         )
 
         appScope.launch {
-            val session = activeSession ?: SessionManager
-                .ensureActiveSession(database.sessionDao())
-                .also { activeSession = it }
-
             val stored = ChainWriter.append(database.eventDao(), session, tag)
             Log.i("TRACE", "MANUAL TAG: id=${stored.id} type=$type session=${session.id}")
 

@@ -58,19 +58,49 @@ object SessionManager {
     }
 
     /**
-     * Returns the session this process is recording into, creating one if it has
-     * not started recording yet. Concurrent callers share a single session.
+     * Opens a session for the operator and marks it as the one this process is
+     * recording into.
+     *
+     * Capture is armed explicitly (the operator states the nature of work and
+     * picks the sensor set), so nothing calls this implicitly — a session only
+     * ever exists because a person asked for one.
+     *
+     * If a session is already open it is returned unchanged: a double tap on
+     * *Start session* must not produce two recordings from one walk around the
+     * site, and the second tap has no description or sensor set of its own to
+     * apply anyway.
+     *
+     * @param sensorSet "|"-separated [SensorRegistry] ids, see
+     *   [SensorRegistry.sensorSetOf]. It is part of the hashed session header, so
+     *   it is fixed for the life of the session.
      */
-    suspend fun ensureActiveSession(
+    suspend fun startSession(
         sessionDao: SessionDao,
         natureOfWork: String = "",
-        sensorSet: String = defaultSensorSet()
+        sensorSet: String = defaultSensorSet(),
+        startedAt: Long = System.currentTimeMillis()
     ): Session = lifecycleLock.withLock {
-        activeSessionId?.let { id -> sessionDao.getSessionById(id)?.let { return it } }
+        openSessionOrNull(sessionDao)?.let { return it }
 
-        val session = createSession(sessionDao, natureOfWork, sensorSet)
+        val session = createSession(sessionDao, natureOfWork, sensorSet, startedAt)
         activeSessionId = session.id
         session
+    }
+
+    /**
+     * The session this process is recording into, or null when nothing is armed.
+     *
+     * A session that has been closed ([Session.STATE_COMPLETED]) is not active, so
+     * a stale id left behind by a finished recording can never be resumed by
+     * accident.
+     */
+    suspend fun currentSession(sessionDao: SessionDao): Session? = openSessionOrNull(sessionDao)
+
+    /** Unlocked body of [currentSession], safe to call while holding [lifecycleLock]. */
+    private suspend fun openSessionOrNull(sessionDao: SessionDao): Session? {
+        val id = activeSessionId ?: return null
+        val session = sessionDao.getSessionById(id) ?: return null
+        return session.takeIf { it.state == Session.STATE_ACTIVE }
     }
 
     /**
@@ -144,7 +174,7 @@ object SessionManager {
         )
 
     /** "|"-separated ids of every live capture sensor. */
-    private fun defaultSensorSet(): String = SensorRegistry.ALL.joinToString("|") { it.id }
+    private fun defaultSensorSet(): String = SensorRegistry.sensorSetOf(SensorSuggester.all())
 
     @VisibleForTesting
     internal fun resetForTest() {
