@@ -12,8 +12,6 @@ import android.hardware.SensorManager
 import android.media.MediaRecorder
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import android.util.Size
 import android.view.WindowManager
@@ -30,8 +28,12 @@ import com.example.trace.databinding.ActivityMainBinding
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -85,9 +87,37 @@ class MainActivity : AppCompatActivity() {
     private val PERMISSION_REQUEST_CODE = 100
 
     // ── Microphone ────────────────────────────────────────────────────────
+    //
+    // The recorder is owned by ONE thread, [audioDispatcher], because
+    // MediaRecorder is not thread-safe: maxAmplitude() is only legal between
+    // start() and stop(), and this pipeline stops and recreates the recorder to
+    // freeze each evidence clip.
+    //
+    // Previously the DB/IO coroutine stopped and recreated the recorder while the
+    // main thread polled maxAmplitude() on that same instance (an uncaught
+    // IllegalStateException on the demo phone), and two events arriving together
+    // could both restart it — leaking a recorder, copying a half-written clip, and
+    // leaving audio capture silently dead for the rest of the session.
+    //
+    // Everything that touches [mediaRecorder] or [recorderStarted] runs on
+    // [audioDispatcher]. Do not read or write them from anywhere else.
+    private val audioExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "trace-audio").apply { isDaemon = true }
+    }
+    private val audioDispatcher = audioExecutor.asCoroutineDispatcher()
+
     private var mediaRecorder: MediaRecorder? = null
-    private var isRecorderStarted = false
-    private val amplitudeHandler = Handler(Looper.getMainLooper())
+    private var recorderStarted = false
+
+    /** Audio thread only. Set during teardown so a late clip save cannot reopen the mic. */
+    private var audioTornDown = false
+
+    private val TEMP_AUDIO_FILE = "temp_audio.amr"
+    private val EVIDENCE_DIR = "TRACE"
+    private val AMPLITUDE_POLL_MS = 150L
+
+    /** Number of polls (~1 s at [AMPLITUDE_POLL_MS]) between mic reopen attempts. */
+    private val REOPEN_RETRY_POLLS = 7
 
     // ── Motion ────────────────────────────────────────────────────────────
     private lateinit var sensorManager: SensorManager
@@ -337,36 +367,37 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        amplitudeHandler.removeCallbacksAndMessages(null)
         if (::sensorManager.isInitialized) sensorManager.unregisterListener(sensorListener)
-        try {
-            if (isRecorderStarted) mediaRecorder?.stop()
-        } catch (e: Exception) {
-            Log.w("TRACE", "Recorder stop failed", e)
-        }
-        mediaRecorder?.release()
-        mediaRecorder = null
+
+        // Stop producing new work before tearing anything down.
         cameraExecutor.shutdown()
         appScope.cancel()
 
-        // Close the session only when the user actually leaves the app. A process
-        // kill or a configuration change leaves it ACTIVE, and the next launch
-        // recovers it as INTERRUPTED.
-        if (isFinishing) {
-            activeSession?.let { session ->
-                // runBlocking rather than appScope: appScope is cancelled above,
-                // and the closing aggregates must be written before the process
-                // goes away.
-                runBlocking {
+        // The recorder belongs to [audioDispatcher], so its teardown has to run
+        // there. runBlocking guarantees the mic is released before the process moves
+        // on — appScope is already cancelled, and the closing session aggregates
+        // must be written too.
+        runBlocking {
+            withContext(audioDispatcher) {
+                audioTornDown = true
+                stopRecorder()
+            }
+
+            // Close the session only when the user actually leaves the app. A
+            // process kill or a configuration change leaves it ACTIVE, and the next
+            // launch recovers it as INTERRUPTED.
+            if (isFinishing) {
+                activeSession?.let { session ->
                     SessionManager.endSession(
                         database.sessionDao(),
                         database.eventDao(),
                         session.id
                     )
+                    activeSession = null
                 }
-                activeSession = null
             }
         }
+        audioDispatcher.close()
     }
 
     // ── Camera ────────────────────────────────────────────────────────────
@@ -446,48 +477,140 @@ class MainActivity : AppCompatActivity() {
 
     // ── Microphone ────────────────────────────────────────────────────────
 
+    /**
+     * Starts the audio capture loop on [audioDispatcher].
+     *
+     * Suspending between polls is what lets a clip save run on the same thread: the
+     * loop yields the thread while it waits, and the recorder is never touched from
+     * two places at once.
+     */
     private fun startMicMonitoring() {
-        val outputFile = File(cacheDir, "temp_audio.amr")
+        appScope.launch(audioDispatcher) {
+            var pollsSinceReopen = REOPEN_RETRY_POLLS   // try immediately
 
-        val recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            MediaRecorder(this)
-        } else {
-            @Suppress("DEPRECATION") MediaRecorder()
-        }
+            while (isActive) {
+                if (!recorderStarted) {
+                    // Reopen after a failed clip freeze, retried at most once a
+                    // second so an unavailable mic cannot spin.
+                    if (pollsSinceReopen >= REOPEN_RETRY_POLLS) {
+                        openRecorder()
+                        pollsSinceReopen = 0
+                    }
+                    pollsSinceReopen++
+                } else {
+                    pollsSinceReopen = 0
+                    val amplitude = readAmplitude()
+                    if (DEBUG_RAW_VALUES) Log.d("TRACE", "RAW amplitude = $amplitude")
 
-        mediaRecorder = recorder.apply {
-            setAudioSource(MediaRecorder.AudioSource.MIC)
-            setOutputFormat(MediaRecorder.OutputFormat.AMR_NB)
-            setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
-            setOutputFile(outputFile.absolutePath)
-            try {
-                prepare()
-                start()
-                isRecorderStarted = true
-            } catch (e: Exception) {
-                Log.e("TRACE", "Mic failed", e)
-                binding.statusText.text = "Mic failed: ${e.message}"
-            }
-        }
-        pollAmplitude()
-    }
-
-    private fun pollAmplitude() {
-        amplitudeHandler.postDelayed({
-            if (isRecorderStarted) {
-                val amplitude = mediaRecorder?.maxAmplitude ?: 0
-                if (DEBUG_RAW_VALUES) Log.d("TRACE", "RAW amplitude = $amplitude")
-
-                val confidence = toConfidence(amplitude.toFloat(), AUDIO_THRESHOLD.toFloat(), AUDIO_MAX.toFloat())
-                if (confidence > 0f) {
-                    onObservation(Observation("audio", confidence, System.currentTimeMillis()))
+                    val confidence = toConfidence(
+                        amplitude.toFloat(),
+                        AUDIO_THRESHOLD.toFloat(),
+                        AUDIO_MAX.toFloat()
+                    )
+                    if (confidence > 0f) {
+                        onObservation(Observation("audio", confidence, System.currentTimeMillis()))
+                    }
+                    // The status bar is updated in updateStatusBar() only when real
+                    // events fire — not with raw numbers every 150 ms.
                 }
-                // Status bar is updated in updateStatusBar() only when real events fire.
-                // We don't overwrite it every 150ms with raw numbers during the demo.
+                delay(AMPLITUDE_POLL_MS)
             }
-            pollAmplitude()
-        }, 150)
+        }
     }
+
+    /**
+     * Creates and starts the recorder on a fresh temp file.
+     * Audio thread only. Returns true when capture is running.
+     */
+    private fun openRecorder(): Boolean {
+        if (audioTornDown) return false
+
+        val recorder = try {
+            newRecorder()
+        } catch (e: Exception) {
+            Log.e("TRACE", "Mic unavailable", e)
+            runOnUiThread { binding.statusText.text = "Mic failed: ${e.message}" }
+            return false
+        }
+
+        return try {
+            recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+            recorder.setOutputFormat(MediaRecorder.OutputFormat.AMR_NB)
+            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
+            recorder.setOutputFile(File(cacheDir, TEMP_AUDIO_FILE).absolutePath)
+            recorder.prepare()
+            recorder.start()
+            mediaRecorder = recorder
+            recorderStarted = true
+            true
+        } catch (e: Exception) {
+            Log.e("TRACE", "Mic failed", e)
+            // Release the half-configured instance: a leaked audio source would make
+            // every later attempt fail too.
+            releaseQuietly(recorder)
+            mediaRecorder = null
+            recorderStarted = false
+            runOnUiThread { binding.statusText.text = "Mic failed: ${e.message}" }
+            false
+        }
+    }
+
+    /** Audio thread only. Returns 0 when the recorder is not in a readable state. */
+    private fun readAmplitude(): Int =
+        try {
+            if (recorderStarted) mediaRecorder?.maxAmplitude ?: 0 else 0
+        } catch (e: IllegalStateException) {
+            // maxAmplitude() is only valid between start() and stop(); a transient
+            // state must never kill the capture loop.
+            Log.w("TRACE", "maxAmplitude unavailable", e)
+            0
+        }
+
+    /**
+     * Stops and releases the recorder. Audio thread only.
+     *
+     * Returns false when the clip could not be closed cleanly — stop() throws if no
+     * frames were captured, in which case the file must not be published as evidence.
+     */
+    private fun stopRecorder(): Boolean {
+        val recorder = mediaRecorder
+        if (recorder == null) {
+            recorderStarted = false
+            return false
+        }
+
+        var closedCleanly = false
+        try {
+            if (recorderStarted) {
+                recorder.stop()
+                closedCleanly = true
+            }
+        } catch (e: Exception) {
+            Log.w("TRACE", "Recorder stop failed", e)
+        } finally {
+            recorderStarted = false
+            releaseQuietly(recorder)
+            mediaRecorder = null
+        }
+        return closedCleanly
+    }
+
+    /** Releases [recorder], logging instead of throwing. */
+    private fun releaseQuietly(recorder: MediaRecorder) {
+        try {
+            recorder.release()
+        } catch (e: Exception) {
+            Log.w("TRACE", "Recorder release failed", e)
+        }
+    }
+
+    private fun newRecorder(): MediaRecorder =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            MediaRecorder(applicationContext)
+        } else {
+            @Suppress("DEPRECATION")
+            MediaRecorder()
+        }
 
     // ── Motion ────────────────────────────────────────────────────────────
 
@@ -764,67 +887,43 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Saves a playable audio evidence clip for the given event.
+     * Freezes the audio currently in the recorder's buffer as an evidence clip.
      *
-     * Strategy: stop the live recorder → copy the fully-terminated file →
-     * restart the recorder to a fresh temp file. This guarantees MediaPlayer
-     * can decode the copy without a missing/truncated AMR header.
+     * Strategy: stop the live recorder → copy the finalised file → start a fresh
+     * recorder. This guarantees MediaPlayer can decode the copy without a
+     * missing/truncated AMR header.
+     *
+     * Runs on [audioDispatcher], so it can never interleave with the amplitude loop
+     * or with another clip save — the stop-and-copy step that used to race is now
+     * serialised by thread ownership rather than by hope.
+     *
+     * @return the clip path, or null when no usable clip could be produced.
      */
-    private fun saveEvidenceClip(eventId: Long): String? {
-        return try {
-            val source = File(cacheDir, "temp_audio.amr")
-            if (!source.exists() || source.length() == 0L) return null
+    private suspend fun saveEvidenceClip(eventId: Long): String? = withContext(audioDispatcher) {
+        // A teardown may have run while this save was queued.
+        if (audioTornDown) return@withContext null
 
-            // ── Stop recorder so the file header is properly finalised ──────
-            try {
-                if (isRecorderStarted) {
-                    mediaRecorder?.stop()
-                    isRecorderStarted = false
-                }
-            } catch (stopEx: Exception) {
-                Log.w("TRACE", "Recorder stop before copy failed", stopEx)
-            }
+        val source = File(cacheDir, TEMP_AUDIO_FILE)
+        if (!recorderStarted || !source.exists() || source.length() == 0L) return@withContext null
 
-            // ── Copy the now-closed file as evidence ─────────────────────────
-            val destDir = File(getExternalFilesDir(null), "TRACE").also { it.mkdirs() }
-            val dest    = File(destDir, "evidence_$eventId.amr")
+        if (!stopRecorder()) {
+            // The clip could not be closed cleanly (stop() throws when almost no
+            // frames were captured). Do not publish a truncated file as evidence.
+            openRecorder()
+            return@withContext null
+        }
+
+        try {
+            val destDir = File(getExternalFilesDir(null), EVIDENCE_DIR).also { it.mkdirs() }
+            val dest = File(destDir, "evidence_$eventId.amr")
             source.copyTo(dest, overwrite = true)
-
-            // ── Restart recording to a fresh temp file ───────────────────────
-            restartRecorder()
-
             dest.absolutePath
         } catch (e: Exception) {
             Log.e("TRACE", "Evidence clip save failed", e)
-            restartRecorder()   // always try to keep recording
             null
-        }
-    }
-
-    /** Releases the old MediaRecorder and starts a fresh one. */
-    private fun restartRecorder() {
-        try {
-            mediaRecorder?.release()
-            mediaRecorder = null
-            isRecorderStarted = false
-            val newFile = File(cacheDir, "temp_audio.amr")
-            val recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                MediaRecorder(this)
-            } else {
-                @Suppress("DEPRECATION") MediaRecorder()
-            }
-            recorder.apply {
-                setAudioSource(MediaRecorder.AudioSource.MIC)
-                setOutputFormat(MediaRecorder.OutputFormat.AMR_NB)
-                setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
-                setOutputFile(newFile.absolutePath)
-                prepare()
-                start()
-            }
-            mediaRecorder = recorder
-            isRecorderStarted = true
-        } catch (e: Exception) {
-            Log.e("TRACE", "Recorder restart failed", e)
+        } finally {
+            // Always get back to recording: a missing clip must never stop capture.
+            openRecorder()
         }
     }
 

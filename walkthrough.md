@@ -141,7 +141,8 @@ Open Logcat in Android Studio, filter tag `TRACE`. Then:
 
 ## Known Limitations (hackathon-acceptable)
 
-1. **Evidence clips are audio-only** (.3gp) — the "clip" is a copy of the MediaRecorder buffer at the moment of detection. It captures ambient sound but not a video frame. Full video clips would require a separate `VideoCapture` use-case.
+1. **Evidence clips are audio-only** (.amr) — the "clip" is a copy of the MediaRecorder buffer at the moment of detection. It captures ambient sound but not a video frame. Full video clips would require a separate `VideoCapture` use-case.
 2. **Fusion is retroactive but not real-time** — when a second sensor fires, previous events in the window are updated to CONFIRMED, but the Timeline screen needs a manual Refresh to show the new status.
 3. **Schema migrations are now real** — `fallbackToDestructiveMigration()` has been removed and v2 → v3 migrates in place. A missing migration fails loudly instead of silently deleting evidence.
 4. **Hash chain race is fixed** — every write goes through `ChainWriter`, which serialises read-tip → insert → hash → update behind a mutex, so simultaneous sensor events can no longer fork the chain.
+5. **Recorder concurrency is fixed** — the `MediaRecorder` is owned by a single dedicated thread, so the amplitude loop cannot poll `maxAmplitude()` while a clip save stops/recreates the recorder. A failed clip freeze now reopens the mic instead of killing audio detection for the rest of the session.
