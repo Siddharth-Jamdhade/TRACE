@@ -7,8 +7,12 @@ import android.hardware.SensorManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.animation.Animator
+import android.animation.ValueAnimator
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -110,6 +114,9 @@ class MainActivity : AppCompatActivity() {
 
     // Running event count shown live on screen (mirrored from [LiveBus])
     private var eventCount = 0
+
+    /** Whether the live log panel is currently expanded. */
+    private var logsExpanded = false
 
     /**
      * Live transcript for the dashboard's log tail — shared with
@@ -280,6 +287,11 @@ class MainActivity : AppCompatActivity() {
         binding.logRecycler.layoutManager = LinearLayoutManager(this)
         binding.logRecycler.adapter = logAdapter
         binding.logRecycler.itemAnimator = null
+
+        // Collapsible log panel — starts collapsed.
+        binding.logPanel.visibility = View.GONE
+        binding.logPanel.alpha = 1f
+        binding.logSheetBar.setOnClickListener { toggleLogPanel() }
 
         // Render the un-armed state before anything asynchronous happens: the app
         // starts idle and must say so, not claim to be watching sensors.
@@ -637,6 +649,110 @@ class MainActivity : AppCompatActivity() {
         if (entries.isNotEmpty()) {
             binding.logRecycler.scrollToPosition(logAdapter.itemCount - 1)
         }
+    }
+
+    // ── Collapsible live log panel ─────────────────────────────────────────
+
+    /** Toggles the live log panel between expanded and collapsed. */
+    private fun toggleLogPanel() {
+        if (logsExpanded) collapseLogPanel() else expandLogPanel()
+    }
+
+    /** Animates the log panel open, revealing live session logs. */
+    private fun expandLogPanel() {
+        logsExpanded = true
+
+        // Make visible at height 0 so we can animate in.
+        binding.logPanel.visibility = View.VISIBLE
+        val lp = binding.logPanel.layoutParams
+        lp.height = 0
+        binding.logPanel.layoutParams = lp
+
+        // Measure the full height we need to animate to.
+        val hudWidth = binding.hud.width
+        if (hudWidth == 0) {
+            // Not laid out yet — just set wrap_content and finish.
+            lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
+            binding.logPanel.layoutParams = lp
+            binding.ivLogArrow.setImageResource(R.drawable.ic_expand_more)
+            return
+        }
+        binding.logPanel.measure(
+            View.MeasureSpec.makeMeasureSpec(hudWidth, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        )
+        val fullHeight = binding.logPanel.measuredHeight
+
+        ValueAnimator.ofInt(0, fullHeight).apply {
+            addUpdateListener { va ->
+                val params = binding.logPanel.layoutParams
+                params.height = va.animatedValue as Int
+                binding.logPanel.layoutParams = params
+                binding.logPanel.alpha = va.animatedFraction
+            }
+            addListener(object : Animator.AnimatorListener {
+                override fun onAnimationStart(a: Animator) {}
+                override fun onAnimationEnd(a: Animator) {
+                    val params = binding.logPanel.layoutParams
+                    params.height = ViewGroup.LayoutParams.WRAP_CONTENT
+                    binding.logPanel.layoutParams = params
+                    binding.logPanel.alpha = 1f
+                }
+                override fun onAnimationCancel(a: Animator) {
+                    val params = binding.logPanel.layoutParams
+                    params.height = ViewGroup.LayoutParams.WRAP_CONTENT
+                    binding.logPanel.layoutParams = params
+                    binding.logPanel.alpha = 1f
+                }
+                override fun onAnimationRepeat(a: Animator) {}
+            })
+            duration = 300
+            interpolator = AccelerateDecelerateInterpolator()
+            start()
+        }
+
+        binding.ivLogArrow.setImageResource(R.drawable.ic_expand_more)
+    }
+
+    /** Animates the log panel closed, hiding live session logs. */
+    private fun collapseLogPanel() {
+        logsExpanded = false
+        val currentHeight = binding.logPanel.height
+        if (currentHeight <= 0) {
+            binding.logPanel.visibility = View.GONE
+            binding.ivLogArrow.setImageResource(R.drawable.ic_expand_less)
+            return
+        }
+
+        ValueAnimator.ofInt(currentHeight, 0).apply {
+            addUpdateListener { va ->
+                val params = binding.logPanel.layoutParams
+                params.height = va.animatedValue as Int
+                binding.logPanel.layoutParams = params
+                binding.logPanel.alpha = 1f - va.animatedFraction
+            }
+            addListener(object : Animator.AnimatorListener {
+                override fun onAnimationStart(a: Animator) {}
+                override fun onAnimationEnd(a: Animator) {
+                    binding.logPanel.visibility = View.GONE
+                    val params = binding.logPanel.layoutParams
+                    params.height = ViewGroup.LayoutParams.WRAP_CONTENT
+                    binding.logPanel.layoutParams = params
+                }
+                override fun onAnimationCancel(a: Animator) {
+                    binding.logPanel.visibility = View.GONE
+                    val params = binding.logPanel.layoutParams
+                    params.height = ViewGroup.LayoutParams.WRAP_CONTENT
+                    binding.logPanel.layoutParams = params
+                }
+                override fun onAnimationRepeat(a: Animator) {}
+            })
+            duration = 250
+            interpolator = AccelerateDecelerateInterpolator()
+            start()
+        }
+
+        binding.ivLogArrow.setImageResource(R.drawable.ic_expand_less)
     }
 
     /**

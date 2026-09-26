@@ -169,19 +169,26 @@
 
         </LinearLayout>
 
-        <!-- Session log section -->
+        <!-- Live Logs toggle bar — always visible, triggers expand/collapse -->
         <LinearLayout
+            android:id="@+id/logSheetBar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginTop="4dp">
+            android:gravity="center_vertical"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackground">
 
             <TextView
+                android:id="@+id/tvLogSheetTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Session log"
+                android:text="Live Logs"
                 android:textColor="?attr/colorOnSurfaceVariant"
-                android:textSize="10sp"
+                android:textSize="11sp"
                 android:textStyle="bold" />
 
             <Space
@@ -195,18 +202,36 @@
                 android:layout_height="wrap_content"
                 android:text="0 events"
                 android:textColor="?attr/colorOnSurfaceVariant"
-                android:textSize="10sp" />
+                android:textSize="10sp"
+                android:layout_marginEnd="6dp" />
+
+            <ImageView
+                android:id="@+id/ivLogArrow"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_expand_less"
+                android:contentDescription="Toggle logs" />
 
         </LinearLayout>
 
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/logRecycler"
+        <!-- Collapsible log panel — height animated between 0 and full -->
+        <LinearLayout
+            android:id="@+id/logPanel"
             android:layout_width="match_parent"
-            android:layout_height="110dp"
-            android:layout_marginTop="2dp"
-            android:overScrollMode="never"
-            android:requiresFadingEdge="vertical"
-            android:fadingEdgeLength="18dp" />
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/logRecycler"
+                android:layout_width="match_parent"
+                android:layout_height="130dp"
+                android:layout_marginTop="2dp"
+                android:overScrollMode="never"
+                android:requiresFadingEdge="vertical"
+                android:fadingEdgeLength="18dp" />
+
+        </LinearLayout>
 
         <TextView
             android:id="@+id/statusText"

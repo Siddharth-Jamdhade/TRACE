@@ -79,9 +79,8 @@ class CaptureService : Service(), LifecycleOwner {
     ).apply { start() }
     private val sensorHandler = Handler(sensorThread.looper)
 
-    // ── Wall-clock offset (computed once at service creation) ─────────────
-    private val wallClockOffsetMs = System.currentTimeMillis() - System.nanoTime() / 1_000_000
-    private fun monoTimeMs(): Long = System.nanoTime() / 1_000_000
+    // ── Wall-clock timestamp helper (uses the phone's own clock) ──────────
+    private fun monoTimeMs(): Long = System.currentTimeMillis()
 
     /** Sensor IDs the armed session is capturing from. */
     private var armedSensorIds: Set<String> = emptySet()
@@ -120,7 +119,6 @@ class CaptureService : Service(), LifecycleOwner {
         when {
             intent?.action == ACTION_END -> {
                 stopCapturePipelines()
-                TimestampDisplay.reset()
                 stopSelf()
                 return START_NOT_STICKY
             }
@@ -149,7 +147,6 @@ class CaptureService : Service(), LifecycleOwner {
         motionSource = null
         environmentSource = null
         serviceScope.cancel()
-        TimestampDisplay.reset()
         markRunning(false)
         super.onDestroy()
     }
@@ -175,9 +172,7 @@ class CaptureService : Service(), LifecycleOwner {
             "capture service attached · ${armedSensorIds.size} sensor(s)",
         )
 
-        // Set up timestamp display offset for this session
-        TimestampDisplay.wallClockOffsetMs = wallClockOffsetMs
-        TimestampDisplay.sessionStartedAtWallClock = session.startedAt
+        // Timestamps are now wall-clock (System.currentTimeMillis) — no offset needed.
 
         // Reset stale state
         lastEventTime.clear()
@@ -423,11 +418,15 @@ class CaptureService : Service(), LifecycleOwner {
         val sessionId = SessionManager.activeSessionId ?: return
         if (EvidenceLock.isLocked(this)) return
 
+        // Use wall-clock time so every sensor source (SensorEvent.timestamp,
+        // ImageInfo.timestamp, System.nanoTime) produces the same correct time.
+        val wallNow = System.currentTimeMillis()
+
         // Cooldown per sensor source — still applies to prevent spam from
         // independent sensors that each fire at their own rate.
         val lastTime = lastEventTime[obs.source] ?: 0L
-        if (obs.timestamp - lastTime < EVENT_COOLDOWN_MS) return
-        lastEventTime[obs.source] = obs.timestamp
+        if (wallNow - lastTime < EVENT_COOLDOWN_MS) return
+        lastEventTime[obs.source] = wallNow
 
         // ── Tier 2 state machine ───────────────────────────────────────────
         val sigma = obs.deviationSigma ?: 0.0
@@ -438,7 +437,7 @@ class CaptureService : Service(), LifecycleOwner {
             TransitionPhase.CAPTURED -> {
                 // Check if enough time has passed with the sensor back at
                 // baseline to re-arm for the next transition.
-                val quietTime = (obs.timestamp - state.lastTriggeredMs) / 1_000
+                val quietTime = (wallNow - state.lastTriggeredMs) / 1_000
                 if (quietTime >= TIER_2_RESET_SECONDS && sigma < 1.0) {
                     state.phase = TransitionPhase.IDLE
                     sigma >= TIER_2_SIGMA_THRESHOLD   // trigger again if it's still deviating
@@ -448,12 +447,12 @@ class CaptureService : Service(), LifecycleOwner {
 
         if (!shouldTrigger) return
         state.phase = TransitionPhase.CAPTURED
-        state.lastTriggeredMs = obs.timestamp
+        state.lastTriggeredMs = wallNow
 
         // Create a generic deviation entry — no activity label, no fusion.
         val baseEvent = Event(
             type = obs.source,
-            timestamp = obs.timestamp,
+            timestamp = wallNow,
             source = obs.source,
             confidence = obs.confidence,
             baselineValue = obs.baselineValue,

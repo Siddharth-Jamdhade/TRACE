@@ -38,7 +38,7 @@ class SessionLog(private val capacity: Int = DEFAULT_CAPACITY) {
         INFO
     }
 
-    /** One rendered entry. [timestamp] is wall-clock ms, formatted by the UI. */
+    /** One rendered entry. [timestamp] is wall-clock ms (System.currentTimeMillis). */
     data class Line(val kind: Kind, val text: String, val timestamp: Long)
 
     private val lines = ArrayDeque<Line>()

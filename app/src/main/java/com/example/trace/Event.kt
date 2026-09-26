@@ -31,7 +31,7 @@ data class Event(
      */
     val type: String,
 
-    /** System.currentTimeMillis() at detection time. */
+    /** System.currentTimeMillis() at detection time (wall-clock). */
     val timestamp: Long,
 
     /** Primary triggering sensor: see [SensorRegistry] for all IDs. */
