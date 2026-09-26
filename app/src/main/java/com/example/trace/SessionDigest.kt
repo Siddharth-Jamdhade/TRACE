@@ -5,13 +5,16 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * TRACE — session digest for Cloud AI chat.
+ * TRACE — session digest for AI chat.
  *
  * Builds the compact, factual context the model answers from: the session
- * header and every event line (chronological, with status, source and
- * confidence), plus counts. Nothing is summarised by inference — the digest is
+ * header and every event line (chronological, with source and deviation
+ * magnitude), plus counts. Nothing is summarised by inference — the digest is
  * a deterministic rendering of database rows, so the same session always
  * produces the same prompt.
+ *
+ * Each event is a self-contained deviation entry with no activity label or
+ * fusion status. The AI interprets deviations in context.
  *
  * Deliberately excluded: hash-chain fields (meaningless to a language model,
  * and they would double the prompt size for zero grounding value).
@@ -67,10 +70,15 @@ object SessionDigest {
                 if (e.evidenceClipPath != null) append(" [audio]")
                 if (e.evidencePhotoPath != null) append(" [photo]")
             }
+            val dev = buildString {
+                e.baselineValue?.let { append(" baseline=${"%.2f".format(it)}") }
+                e.observedValue?.let { append(" observed=${"%.2f".format(it)}") }
+                e.deviationSigma?.let { append(" sigma=${"%.1f".format(it)}") }
+            }
             if (e.source == SensorRegistry.MANUAL.id) {
                 "$t [MANUAL] \"$label\" — asserted by the human operator$extras"
             } else {
-                "$t [${e.status}] $label — ${SensorRegistry.labelFor(e.source)} ($conf%)$extras"
+                "$t $label — ${SensorRegistry.labelFor(e.source)} (${conf}%)$dev$extras"
             }
         }.toMutableList()
 
@@ -81,18 +89,16 @@ object SessionDigest {
     }
 
     fun buildStats(session: Session, events: List<Event>): String {
-        val byStatus = events.groupingBy { it.status }.eachCount()
         val bySource = events.groupingBy { it.source }.eachCount()
-        val statusStr = byStatus.entries.joinToString(", ") { "${it.key}=${it.value}" }
-            .ifEmpty { "none" }
         val sourceStr = bySource.entries.sortedByDescending { it.value }
             .joinToString(", ") { "${SensorRegistry.labelFor(it.key)}=${it.value}" }
             .ifEmpty { "none" }
         val clips = events.count { it.evidenceClipPath != null }
         val photos = events.count { it.evidencePhotoPath != null }
+        val highSigma = events.count { (it.deviationSigma ?: 0.0) >= 3.0 }
         return "Total events: ${events.size} (session counter: ${session.eventCount})\n" +
-            "By status: $statusStr\n" +
             "By source: $sourceStr\n" +
+            "High-sigma deviations (≥3σ): $highSigma\n" +
             "Evidence files: $clips audio clip(s), $photos photo(s)"
     }
 
@@ -139,12 +145,15 @@ object SessionDigest {
         - Ground every factual claim in the digest. If the digest does not contain
           the answer, say so plainly — never invent events, times or readings.
         - Timestamps are wall-clock times of the device that recorded them.
-        - [CONFIRMED] means two or more independent sensors agreed within a
-          2-second window; [UNCONFIRMED] means one sensor fired; [REJECTED] means
-          the signal was too weak to count; [MANUAL] is something a human on
-          scene asserted directly — a claim, not a sensor measurement.
-        - The sensors infer THAT something happened; they do not know what it was.
-          Use [MANUAL] lines and event labels as the best available description.
+        - Each event is a raw deviation: a sensor flagged that its reading
+          deviated from its running baseline. There is no cross-sensor fusion,
+          no activity label, and no CONFIRMED/UNCONFIRMED/REJECTED status.
+          The "sigma" value shows how many standard deviations the reading was
+          from the baseline mean — higher sigma = more unusual.
+        - [MANUAL] lines are assertions by the human operator on scene — claims,
+          not sensor measurements.
+        - The sensors infer THAT something deviated; they do not know what caused
+          it. Use [MANUAL] lines and sensor names as the best available description.
         - You are review tooling, not part of the evidence chain. Never present
           your own output as a sensor reading or as evidence.
     """.trimIndent()

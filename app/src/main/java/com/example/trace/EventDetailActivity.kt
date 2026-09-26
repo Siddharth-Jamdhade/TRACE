@@ -25,10 +25,8 @@ import java.io.File
  * TRACE — Event Detail screen.
  *
  * Shows full evidence breakdown for a single [Event]:
- *   - Fusion status with colour-coded banner
- *   - Per-sensor confidence bars (camera / audio / motion)
+ *   - Deviation context (baseline, observed value, sigma)
  *   - QueryEngine explanation text
- *   - Confirm / Reject human-review buttons
  *   - Evidence clip playback (if a clip was saved)
  *   - SHA-256 hash-chain integrity indicator
  */
@@ -55,10 +53,8 @@ class EventDetailActivity : AppCompatActivity() {
         val eventId = intent.getLongExtra("eventId", -1L)
         if (eventId == -1L) { finish(); return }
 
-        loadEvent(eventId)   // binding.btnViewPhoto is wired after loading, below
+        loadEvent(eventId)
 
-        binding.btnConfirm.setOnClickListener { updateStatus("CONFIRMED") }
-        binding.btnReject.setOnClickListener  { updateStatus("REJECTED")  }
         binding.btnPlayEvidence.setOnClickListener { playEvidence() }
         binding.btnViewPhoto.setOnClickListener { showSnapshot() }
     }
@@ -100,62 +96,15 @@ class EventDetailActivity : AppCompatActivity() {
         clipOk: Boolean?,
         photoOk: Boolean?
     ) {
-        // Status banner
-        // Fixed semantic colours, deliberately not theme attributes: a CONFIRMED
-        // incident has to stay green whatever wallpaper palette is active.
-        val statusColor = when (e.status) {
-            "CONFIRMED"   -> ContextCompat.getColor(this, R.color.trace_status_confirmed_surface)
-            "UNCONFIRMED" -> ContextCompat.getColor(this, R.color.trace_status_unconfirmed_surface)
-            "REJECTED"    -> ContextCompat.getColor(this, R.color.trace_status_rejected_surface)
-            "MANUAL"      -> ContextCompat.getColor(this, R.color.trace_status_manual_surface)
-            else          -> ContextCompat.getColor(this, R.color.trace_status_unknown_surface)
-        }
         val manual = e.source == SensorRegistry.MANUAL.id
-        binding.statusCard.setBackgroundColor(statusColor)
-        binding.tvStatus.text    = e.status
         binding.tvEventType.text = e.type.replace("_", " ").replaceFirstChar { it.uppercase() }
         binding.tvTimestamp.text = TimestampDisplay.formatDateTime(e.timestamp)
         binding.tvSource.text    =
             if (manual) "Primary source: manual (asserted by the operator)"
             else        "Primary source: ${e.source}"
 
-        // Sensor confidence bars
-        // If the event was triggered by a single sensor, its own confidence is the
-        // best evidence we have — motionConfidence is only set when another source
-        // was also in the 2-second fusion window.
-        val camConf    = e.cameraConfidence ?: if (e.source == "camera") e.confidence else 0f
-        val audioConf  = e.audioConfidence  ?: if (e.source == "audio")  e.confidence else 0f
-        val motionConf = e.motionConfidence ?: if (e.source == "motion") e.confidence else 0f
-        binding.progressCamera.progress = (camConf    * 100).toInt()
-        binding.progressAudio.progress  = (audioConf  * 100).toInt()
-        binding.progressMotion.progress = (motionConf * 100).toInt()
-        binding.tvCameraConf.text  = "Camera:  ${"%.0f".format(camConf    * 100)}%"
-        binding.tvAudioConf.text   = "Audio:   ${"%.0f".format(audioConf  * 100)}%"
-        binding.tvMotionConf.text  = "Motion:  ${"%.0f".format(motionConf * 100)}%"
-
-        // Extra sensors recorded in the fusion window (magnetometer, barometer,
-        // light, linear, gyroscope, step, sigmotion) — shown so no evidence is hidden.
-        //
-        // For a manual tag the three bars above stay empty by design (no sensor
-        // measured anything for it), which would read like a fault; explain it
-        // instead of leaving three bare zeros.
-        binding.tvExtraSensors.text = if (manual) {
-            "${SensorRegistry.MANUAL.icon} Asserted by the operator — no sensor contributed to this record.\n" +
-            "Sensor events recorded around this moment are separate entries in the timeline."
-        } else {
-            e.sensorBreakdown
-                ?.split("|")
-                ?.filter { it.isNotBlank() }
-                ?.joinToString("\n") { pair ->
-                    val sensor = pair.substringBefore(':')
-                    val conf   = pair.substringAfter(':').toFloatOrNull() ?: 0f
-                    "${SensorRegistry.iconFor(sensor)} ${SensorRegistry.labelFor(sensor)}: ${"%.0f".format(conf * 100)}%"
-                }
-                ?.takeIf { it.isNotEmpty() } ?: "No additional sensor evidence in window."
-        }
-
-        // Explanation text
-        binding.tvExplanation.text = QueryEngine.explainConfidence(e)
+        // Deviation context explanation
+        binding.tvExplanation.text = QueryEngine.explainDeviation(e)
 
         // Evidence clip — with Stage 7 file-integrity verdict
         val clip = e.evidenceClipPath
@@ -219,26 +168,7 @@ class EventDetailActivity : AppCompatActivity() {
         }
     }
 
-    // ------ User actions ------------------------------------------------
-
-    private fun updateStatus(newStatus: String) {
-        val e = currentEvent ?: return
-        scope.launch {
-            database.eventDao().updateStatus(e.id, newStatus)
-            val updated = e.copy(status = newStatus)
-            currentEvent = updated
-            val clipOk  = updated.evidenceClipPath?.let { FileIntegrity.matches(File(it), updated.clipHash) }
-            val photoOk = updated.evidencePhotoPath?.let { FileIntegrity.matches(File(it), updated.photoHash) }
-            withContext(Dispatchers.Main) {
-                renderEvent(updated, HashChain.verifySingle(updated), true, clipOk, photoOk)
-                Toast.makeText(
-                    this@EventDetailActivity,
-                    "Status set to $newStatus",
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-        }
-    }
+    // ------ Evidence playback -------------------------------------------
 
     private fun playEvidence() {
         val clip = currentEvent?.evidenceClipPath ?: return

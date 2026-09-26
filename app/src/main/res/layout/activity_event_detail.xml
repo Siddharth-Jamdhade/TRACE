@@ -26,33 +26,23 @@
         android:orientation="vertical"
         android:padding="16dp">
 
-        <!-- Status banner -->
+        <!-- Deviation header -->
         <LinearLayout
-            android:id="@+id/statusCard"
+            android:id="@+id/eventHeader"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:padding="16dp"
-            android:background="@color/trace_surface_elevated">
-
-            <TextView
-                android:id="@+id/tvStatus"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="#FFFFFF"
-                android:textSize="20sp"
-                android:textStyle="bold"
-                android:letterSpacing="0.1"
-                android:text="UNCONFIRMED" />
+            android:background="?attr/colorSurfaceVariant">
 
             <TextView
                 android:id="@+id/tvEventType"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="?attr/colorOnSurface"
-                android:textSize="15sp"
-                android:layout_marginTop="4dp"
-                android:text="Object moves" />
+                android:textSize="17sp"
+                android:textStyle="bold"
+                android:text="Event type" />
 
             <TextView
                 android:id="@+id/tvTimestamp"
@@ -61,7 +51,7 @@
                 android:textColor="?attr/colorOnSurfaceVariant"
                 android:textSize="12sp"
                 android:fontFamily="monospace"
-                android:layout_marginTop="2dp"
+                android:layout_marginTop="4dp"
                 android:text="Sep 17, 2026  10:45:00" />
 
             <TextView
@@ -75,57 +65,16 @@
 
         </LinearLayout>
 
-        <!-- Sensor confidence section -->
+        <!-- Deviation context -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="SENSOR EVIDENCE"
+            android:text="DEVIATION CONTEXT"
             android:textColor="?attr/colorPrimary"
             android:textSize="10sp"
             android:letterSpacing="0.15"
             android:fontFamily="monospace"
             android:layout_marginTop="20dp"
-            android:layout_marginBottom="8dp" />
-
-        <!-- Camera row -->
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginBottom="10dp">
-            <TextView android:id="@+id/tvCameraConf" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="?attr/colorOnSurfaceVariant" android:textSize="12sp" android:fontFamily="monospace" android:text="Camera:  0%" />
-            <ProgressBar android:id="@+id/progressCamera" style="@android:style/Widget.ProgressBar.Horizontal" android:layout_width="match_parent" android:layout_height="8dp" android:layout_marginTop="4dp" android:progressTint="@color/trace_sensor_camera" android:progressBackgroundTint="?attr/colorOutlineVariant" android:max="100" android:progress="0" />
-        </LinearLayout>
-
-        <!-- Audio row -->
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginBottom="10dp">
-            <TextView android:id="@+id/tvAudioConf" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="?attr/colorOnSurfaceVariant" android:textSize="12sp" android:fontFamily="monospace" android:text="Audio:   0%" />
-            <ProgressBar android:id="@+id/progressAudio" style="@android:style/Widget.ProgressBar.Horizontal" android:layout_width="match_parent" android:layout_height="8dp" android:layout_marginTop="4dp" android:progressTint="@color/trace_sensor_audio" android:progressBackgroundTint="?attr/colorOutlineVariant" android:max="100" android:progress="0" />
-        </LinearLayout>
-
-        <!-- Motion row -->
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginBottom="10dp">
-            <TextView android:id="@+id/tvMotionConf" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="?attr/colorOnSurfaceVariant" android:textSize="12sp" android:fontFamily="monospace" android:text="Motion:  0%" />
-            <ProgressBar android:id="@+id/progressMotion" style="@android:style/Widget.ProgressBar.Horizontal" android:layout_width="match_parent" android:layout_height="8dp" android:layout_marginTop="4dp" android:progressTint="@color/trace_sensor_motion" android:progressBackgroundTint="?attr/colorOutlineVariant" android:max="100" android:progress="0" />
-        </LinearLayout>
-
-        <!-- Extra sensors (magnetometer, barometer, light, linear, gyroscope, step) -->
-        <TextView
-            android:id="@+id/tvExtraSensors"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="?attr/colorOnSurfaceVariant"
-            android:textSize="12sp"
-            android:fontFamily="monospace"
-            android:layout_marginBottom="10dp"
-            android:text="" />
-
-        <!-- Explanation -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="EXPLANATION"
-            android:textColor="?attr/colorPrimary"
-            android:textSize="10sp"
-            android:letterSpacing="0.15"
-            android:fontFamily="monospace"
-            android:layout_marginTop="10dp"
             android:layout_marginBottom="8dp" />
 
         <TextView
@@ -139,48 +88,6 @@
             android:fontFamily="monospace"
             android:background="?attr/colorSurfaceVariant"
             android:text="..." />
-
-        <!-- Human review buttons -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="HUMAN REVIEW"
-            android:textColor="?attr/colorPrimary"
-            android:textSize="10sp"
-            android:letterSpacing="0.15"
-            android:fontFamily="monospace"
-            android:layout_marginTop="20dp"
-            android:layout_marginBottom="8dp" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:weightSum="2">
-
-            <Button
-                android:id="@+id/btnConfirm"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginEnd="6dp"
-                android:text="CONFIRM"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold"
-                android:backgroundTint="@color/trace_status_confirmed_surface" />
-
-            <Button
-                android:id="@+id/btnReject"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="6dp"
-                android:text="REJECT"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold"
-                android:backgroundTint="@color/trace_status_rejected_surface" />
-
-        </LinearLayout>
 
         <!-- Evidence clip -->
         <TextView

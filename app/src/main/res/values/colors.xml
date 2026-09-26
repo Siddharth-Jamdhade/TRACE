@@ -56,13 +56,10 @@
     <color name="trace_camera_backdrop">#000000</color>
     <color name="trace_scrim">#CC0D1117</color>
 
-    <!-- Fixed semantic: incident status -->
-    <color name="trace_status_confirmed">#00E676</color>
-    <color name="trace_status_confirmed_surface">#1B5E20</color>
+    <!-- Fixed semantic: incident status (kept for legacy data display) -->
     <color name="trace_status_unconfirmed">#FFD600</color>
     <color name="trace_status_unconfirmed_surface">#E65100</color>
     <color name="trace_status_rejected">#F85149</color>
-    <color name="trace_status_rejected_surface">#B71C1C</color>
     <color name="trace_status_unknown">#484F58</color>
     <color name="trace_status_unknown_surface">#263238</color>
 
@@ -73,7 +70,6 @@
       verdict the sensors reached on their own.
     -->
     <color name="trace_status_manual">#B388FF</color>
-    <color name="trace_status_manual_surface">#4527A0</color>
 
     <!-- Fixed semantic: hash-chain integrity -->
     <color name="trace_integrity_ok">#00C853</color>

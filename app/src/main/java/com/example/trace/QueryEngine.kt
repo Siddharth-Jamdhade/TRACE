@@ -6,6 +6,10 @@ package com.example.trace
  * Routes plain-text questions to the correct timeline operation using
  * simple keyword matching. All answers are produced from deterministic
  * list-filter operations — never fabricated.
+ *
+ * Queries work on deviation entries: no status labels, no predefined event
+ * types. Questions filter by sensor source, deviation magnitude, or
+ * temporal relationships.
  */
 object QueryEngine {
 
@@ -31,88 +35,90 @@ object QueryEngine {
                 else "After '${target.type}' @ ${fmt(target.timestamp)}:\n${describeList(succs)}"
             }
             "why" in q || "explain" in q || "reason" in q -> {
-                explainConfidence(findTarget(q, sorted))
+                explainDeviation(findTarget(q, sorted))
             }
             "last" in q || "recent" in q || "latest" in q -> {
                 val last = sorted.last()
-                "Most recent: ${last.type} @ ${fmt(last.timestamp)} -- ${last.status}"
+                "Most recent: ${last.type} @ ${fmt(last.timestamp)} — source: ${last.source}, " +
+                    "confidence: ${"%.0f".format(last.confidence * 100)}%"
             }
             "how many" in q || "count" in q || "total" in q -> {
-                val c = sorted.count { it.status == "CONFIRMED" }
-                val u = sorted.count { it.status == "UNCONFIRMED" }
-                val r = sorted.count { it.status == "REJECTED" }
-                val m = sorted.count { it.source == SensorRegistry.MANUAL.id }
-                "Total: ${sorted.size}  CONFIRMED: $c  UNCONFIRMED: $u  REJECTED: $r" +
-                    if (m > 0) "  MANUAL: $m" else ""
+                val bySource = events.groupingBy { it.source }.eachCount()
+                val sourceStr = bySource.entries.sortedByDescending { it.value }
+                    .joinToString(", ") { "${it.key}=${it.value}" }
+                "Total: ${sorted.size} events  |  $sourceStr"
             }
-            "confirmed" in q && "unconfirmed" !in q -> {
-                val list = sorted.filter { it.status == "CONFIRMED" }
-                if (list.isEmpty()) "No confirmed events yet."
-                else "Confirmed events:\n${describeList(list)}"
+            "sigma" in q || "sigma >=" in q || "high sigma" in q -> {
+                val threshold = 3.0
+                val list = sorted.filter { (it.deviationSigma ?: 0.0) >= threshold }
+                if (list.isEmpty()) "No deviations at ≥${threshold}σ."
+                else "Deviations ≥${threshold}σ:\n${describeList(list)}"
             }
-            "unconfirmed" in q -> {
-                val list = sorted.filter { it.status == "UNCONFIRMED" }
-                if (list.isEmpty()) "No unconfirmed events."
-                else "Unconfirmed events:\n${describeList(list)}"
-            }
-            "fall" in q || "impact" in q -> {
-                val list = sorted.filter { "fall" in it.type || "impact" in it.type }
-                if (list.isEmpty()) "No fall or impact events recorded."
-                else "Fall/Impact events:\n${describeList(list)}"
-            }
-            "door" in q -> {
-                val list = sorted.filter { "door" in it.type }
-                if (list.isEmpty()) "No door events recorded."
-                else "Door events:\n${describeList(list)}"
-            }
-            "person" in q || "someone" in q -> {
-                val list = sorted.filter { it.type == "person_present" }
-                if (list.isEmpty()) "No footsteps recorded."
-                else "Person presence:\n${describeList(list)}"
-            }
-            "light" in q || "lights" in q -> {
-                val list = sorted.filter { it.type == "lights_off" }
-                if (list.isEmpty()) "No lights_off events recorded."
-                else "Lights-off events:\n${describeList(list)}"
-            }
-            "pressure" in q -> {
-                val list = sorted.filter { it.type == "pressure_shift" }
-                if (list.isEmpty()) "No pressure shifts recorded."
-                else "Pressure shifts:\n${describeList(list)}"
-            }
-            "alarm" in q || "sound" in q || "audio" in q -> {
-                val list = sorted.filter { it.source == "audio" }
-                if (list.isEmpty()) "No audio events recorded."
-                else "Audio events:\n${describeList(list)}"
-            }
-            "motion" in q || "shake" in q || "move" in q -> {
-                val list = sorted.filter { it.source == "motion" }
-                if (list.isEmpty()) "No motion events recorded."
-                else "Motion events:\n${describeList(list)}"
+            "strong" in q || "highest" in q -> {
+                val top = sorted.sortedByDescending { it.confidence }.take(5)
+                "Highest-confidence deviations:\n${describeList(top)}"
             }
             "camera" in q || "visual" in q -> {
                 val list = sorted.filter { it.source == "camera" }
-                if (list.isEmpty()) "No visual events recorded."
-                else "Visual events:\n${describeList(list)}"
+                if (list.isEmpty()) "No camera deviations recorded."
+                else "Camera deviations:\n${describeList(list)}"
             }
-            // Operator assertions. These have to be tested before the generic
-            // "list all" branch below, because a query like "list manual tags"
-            // contains "list" and would otherwise never reach this case.
+            "audio" in q || "sound" in q -> {
+                val list = sorted.filter { it.source == "audio" }
+                if (list.isEmpty()) "No audio deviations recorded."
+                else "Audio deviations:\n${describeList(list)}"
+            }
+            "motion" in q || "shake" in q || "move" in q -> {
+                val list = sorted.filter { it.source == "motion" }
+                if (list.isEmpty()) "No motion deviations recorded."
+                else "Motion deviations:\n${describeList(list)}"
+            }
+            "magnetometer" in q || "magnetic" in q -> {
+                val list = sorted.filter { it.source == "magnetometer" }
+                if (list.isEmpty()) "No magnetometer deviations recorded."
+                else "Magnetometer deviations:\n${describeList(list)}"
+            }
+            "barometer" in q || "pressure" in q -> {
+                val list = sorted.filter { it.source == "barometer" }
+                if (list.isEmpty()) "No barometer deviations recorded."
+                else "Barometer deviations:\n${describeList(list)}"
+            }
+            "light" in q || "lights" in q -> {
+                val list = sorted.filter { it.source == "light" }
+                if (list.isEmpty()) "No light sensor deviations recorded."
+                else "Light sensor deviations:\n${describeList(list)}"
+            }
+            "gyroscope" in q || "gyro" in q -> {
+                val list = sorted.filter { it.source == "gyroscope" }
+                if (list.isEmpty()) "No gyroscope deviations recorded."
+                else "Gyroscope deviations:\n${describeList(list)}"
+            }
+            "linear" in q || "free" in q -> {
+                val list = sorted.filter { it.source == "linear" }
+                if (list.isEmpty()) "No linear acceleration deviations recorded."
+                else "Linear acceleration deviations:\n${describeList(list)}"
+            }
+            "step" in q || "footstep" in q || "person" in q || "someone" in q -> {
+                val list = sorted.filter { it.source == "step" || it.source == "sigmotion" }
+                if (list.isEmpty()) "No step or motion-trigger deviations recorded."
+                else "Step/motion-trigger deviations:\n${describeList(list)}"
+            }
             "manual" in q || "tag" in q -> {
                 val list = sorted.filter { it.source == SensorRegistry.MANUAL.id }
                 if (list.isEmpty()) "No incidents were tagged by the operator."
-                else "Operator-tagged incidents (human assertions, not sensor verdicts):\n${describeList(list)}"
+                else "Operator-tagged incidents (human assertions, not sensor readings):\n${describeList(list)}"
             }
             "show" in q || "list" in q || "all" in q -> {
                 "All ${sorted.size} events:\n${describeList(sorted)}"
             }
             else -> {
                 "I can answer:\n" +
-                "  before/after [event]    - what happened around an event\n" +
-                "  why was it confirmed?   - sensor evidence breakdown\n" +
-                "  show last event         - most recent entry\n" +
-                "  how many events?        - status counts\n" +
-                "  list all / confirmed / fall / door / person / lights / pressure / manual"
+                "  before/after [sensor]  - what happened around an event\n" +
+                "  explain [nth]          - deviation context breakdown\n" +
+                "  show last event        - most recent entry\n" +
+                "  how many events?       - counts by source\n" +
+                "  high sigma / strong    - most unusual deviations\n" +
+                "  list all / camera / audio / motion / magnetometer / barometer / light / manual"
             }
         }
     }
@@ -125,51 +131,40 @@ object QueryEngine {
     fun getSuccessors(target: Event, allEvents: List<Event>): List<Event> =
         allEvents.filter { it.timestamp > target.timestamp }.take(3)
 
-    /** Human-readable explanation of an event's evidence and status. */
-    fun explainConfidence(event: Event): String = buildString {
+    /** Human-readable explanation of a deviation entry's context. */
+    fun explainDeviation(event: Event): String = buildString {
         appendLine("Event : ${event.type.replace("_", " ")}")
-        appendLine("Status: ${event.status}")
+        appendLine("Source: ${SensorRegistry.labelFor(event.source)}")
+        appendLine("Confidence: ${"%.0f".format(event.confidence * 100)}%")
         appendLine()
-        appendLine("Sensor Evidence:")
-        confLine(this, "Camera", event.cameraConfidence)
-        confLine(this, "Audio ", event.audioConfidence)
-        confLine(this, "Motion", event.motionConfidence)
-        // Extra sensors (magnetometer, barometer, light, linear, gyro, step)
-        event.sensorBreakdown?.split("|")?.filter { it.isNotBlank() }?.forEach { pair ->
-            val sensor = pair.substringBefore(':')
-            val conf   = pair.substringAfter(':').toFloatOrNull()
-            if (conf != null) appendLine("  ${SensorRegistry.labelFor(sensor)}: ${"%.0f".format(conf * 100)}%")
-        }
-        appendLine()
-        val strong = listOfNotNull(event.cameraConfidence, event.audioConfidence, event.motionConfidence)
-            .count { it > 0.6f }
-        append(when (event.status) {
-            "CONFIRMED"   -> "CONFIRMED: $strong independent sensors agreed (>60% each)."
-            "UNCONFIRMED" -> "UNCONFIRMED: Only 1 sensor detected this. Human review recommended."
-            "REJECTED"    -> "REJECTED: No sensor exceeded the confidence threshold."
-            "MANUAL"      -> "MANUAL: asserted by the operator on scene. No sensor agreement was required, " +
-                             "so read this as a human statement rather than a measurement."
-            else          -> "Status unknown."
-        })
+        appendLine("Deviation Context:")
+        event.baselineValue?.let { appendLine("  Baseline mean: ${"%.4f".format(it)}") }
+            ?: appendLine("  Baseline mean: not available")
+        event.observedValue?.let { appendLine("  Observed value: ${"%.4f".format(it)}") }
+            ?: appendLine("  Observed value: not available")
+        event.deviationSigma?.let { sigma ->
+            appendLine("  Deviation: ${"%.1f".format(sigma)}σ from baseline")
+            appendLine()
+            append(when {
+                sigma >= 5.0 -> "Very strong deviation (>5σ) — extremely unlikely under normal conditions."
+                sigma >= 3.0 -> "Strong deviation (>3σ) — unlikely to be random fluctuation."
+                sigma >= 2.0 -> "Moderate deviation (>2σ) — worth noting, may be contextual."
+                else         -> "Mild deviation — above baseline but within a typical range."
+            })
+        } ?: appendLine("  Deviation sigma: not available (threshold-based detection)")
     }
 
     // ------ Helpers ---------------------------------------------------
 
-    private fun confLine(sb: StringBuilder, label: String, conf: Float?) {
-        if (conf != null) sb.appendLine("  $label: ${"%.0f".format(conf * 100)}%")
-        else              sb.appendLine("  $label: no signal")
-    }
-
     private fun findTarget(query: String, events: List<Event>): Event {
-        // Normalize query spaces to underscores for easier exact matching
-        val normalizedQuery = query.replace(" ", "_")
-        val keywords = listOf(
-            "object_falls", "object_moves", "impact", "alarm", "abnormal_sound",
-            "fall", "impact", "alarm", "sound", "move", "camera", "motion", "audio"
+        // Try matching against sensor source names
+        val sourceKeywords = listOf(
+            "camera", "audio", "motion", "magnetometer", "barometer",
+            "light", "linear", "gyroscope", "step", "manual"
         )
-        for (kw in keywords) {
-            if (kw in normalizedQuery || kw in query) {
-                return events.lastOrNull { kw in it.type || kw == it.source } ?: events.last()
+        for (kw in sourceKeywords) {
+            if (kw in query) {
+                return events.lastOrNull { kw in it.source } ?: events.last()
             }
         }
         return events.last()
@@ -177,7 +172,8 @@ object QueryEngine {
 
     private fun describeList(events: List<Event>): String =
         events.joinToString("\n") { e ->
-            "  * ${e.type.replace("_", " ")} @ ${fmt(e.timestamp)} [${e.status}]"
+            val sigma = e.deviationSigma?.let { " σ=${"%.1f".format(it)}" } ?: ""
+            "  * ${e.type.replace("_", " ")} @ ${fmt(e.timestamp)} [${SensorRegistry.labelFor(e.source)} ${"%.0f".format(e.confidence * 100)}%]$sigma"
         }
 
     private fun fmt(ts: Long): String = TimestampDisplay.formatTime(ts)

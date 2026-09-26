@@ -2,7 +2,6 @@ package com.example.trace
 
 import android.view.LayoutInflater
 import android.view.ViewGroup
-import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
@@ -12,8 +11,8 @@ import com.example.trace.databinding.ItemEventBinding
  * TRACE — RecyclerView adapter for the incident timeline.
  *
  * Uses [ListAdapter] + [DiffUtil] for efficient, animated list updates.
- * Status colours: CONFIRMED = green, UNCONFIRMED = amber, REJECTED = red,
- * MANUAL (operator assertion) = violet.
+ * Each row shows the sensor icon, source label, timestamp, and confidence
+ * — no status badge or colour strip, since every entry is a raw deviation.
  */
 class EventAdapter(
     private val onItemClick: (Event) -> Unit
@@ -44,24 +43,6 @@ class EventAdapter(
             } else {
                 "src: ${event.source}  |  ${"%.0f".format(event.confidence * 100)}%"
             }
-            binding.tvStatus.text    = event.status
-
-            // Fixed semantic colours — a status badge must not change colour with
-            // the user's wallpaper palette.
-            val statusColorRes = when (event.status) {
-                "CONFIRMED"   -> R.color.trace_status_confirmed
-                "UNCONFIRMED" -> R.color.trace_status_unconfirmed
-                "REJECTED"    -> R.color.trace_status_rejected
-                "MANUAL"      -> R.color.trace_status_manual
-                else          -> R.color.trace_status_unknown
-            }
-            val (stripColor, badgeTextColor) = Pair(
-                ContextCompat.getColor(binding.root.context, statusColorRes),
-                ContextCompat.getColor(binding.root.context, statusColorRes)
-            )
-
-            binding.statusStrip.setBackgroundColor(stripColor)
-            binding.tvStatus.setTextColor(badgeTextColor)
 
             binding.root.setOnClickListener { onItemClick(event) }
         }

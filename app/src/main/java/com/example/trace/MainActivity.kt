@@ -43,10 +43,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  *   4. SensorManager accelerometer -> motion Observations
  *
  * Every Observation that crosses a threshold flows through:
- *   EventExtractor.extract()  ->  cooldown gate  ->
- *   ChainWriter.append(session, ...)  ->  DB insert  ->
- *   FusionEngine.buildEnrichedEvent()  ->  HashChain.computeHash()  ->
- *   DB update  ->  evidence clip save
+ *   onObservation()  ->  cooldown gate  ->
+ *   ChainWriter.append(session, ...)  ->  DB insert  ->  evidence clip save
  *
  * ---------- TUNING GUIDE ----------
  * Run the app in a quiet room and watch Logcat for "RAW jerk" and
@@ -141,15 +139,6 @@ class MainActivity : AppCompatActivity() {
 
     /** App bar status refresh interval. */
     private val STATUS_TICK_MS = 1_000L
-
-    /** How long the CONFIRMED banner stays up before auto-hiding. */
-    private val BANNER_VISIBLE_MS = 4_000L
-
-    /** Cancels the pending banner hide when a newer confirm replaces it. */
-    private var bannerHide: Job? = null
-
-    /** Last CONFIRMED timestamp this screen has rendered (from [LiveBus]). */
-    private var lastRenderedConfirmAt = 0L
 
     /** This screen's own preview use case, unbound without touching the service's. */
     private var previewUseCase: Preview? = null
@@ -471,15 +460,12 @@ class MainActivity : AppCompatActivity() {
                 LiveBus.confAudio = 0f
                 LiveBus.confMotion = 0f
                 eventCount = 0
-                bannerHide?.cancel()
-                binding.confirmedBanner.visibility = View.GONE
                 refreshCaptureLayout()
 
                 appendLog(
                     SessionLog.Kind.LIFECYCLE,
                     if (closed != null) {
-                        "session ended · ${closed.eventCount} event(s) · " +
-                            "${closed.confirmedCount} confirmed"
+                        "session ended · ${closed.eventCount} event(s)"
                     } else {
                         "session ended"
                     }
@@ -488,7 +474,7 @@ class MainActivity : AppCompatActivity() {
 
                 // Written last: updateSessionUi() refreshes the idle status line.
                 binding.statusText.text = if (closed != null) {
-                    "Session ended · ${closed.eventCount} events · ${closed.confirmedCount} confirmed · " +
+                    "Session ended · ${closed.eventCount} events · " +
                         formatElapsed(closed.durationMs ?: 0L)
                 } else {
                     "Session ended."
@@ -534,12 +520,12 @@ class MainActivity : AppCompatActivity() {
             .ifEmpty { "No sensors selected" }
 
     /** Updates the on-screen status bar — this is what judges see on the phone. */
-    private fun updateStatusBar(lastEventType: String? = null, lastStatus: String? = null) {
+    private fun updateStatusBar(lastEventType: String? = null) {
         val armed = activeSession != null
         val line1 = when {
             evidenceLocked.get() -> "🔒 EVIDENCE LOCKED — new observations are dropped"
             !armed -> "TRACE IDLE — no session armed, nothing is being recorded"
-            lastEventType != null -> "LAST EVENT: $lastEventType  [$lastStatus]"
+            lastEventType != null -> "LAST EVENT: $lastEventType"
             else -> "TRACE ACTIVE — capturing from ${armedSensorIds.size} sensor(s)"
         }
         val line2 = if (armed) {
@@ -586,16 +572,6 @@ class MainActivity : AppCompatActivity() {
                     binding.tvAudioLive.text = "🔊 ${"%.0f".format(LiveBus.confAudio * 100)}%"
                     binding.tvMotionLive.text = "📳 ${"%.0f".format(LiveBus.confMotion * 100)}%"
                     binding.tvLogCount.text = "$eventCount event(s)"
-                    if (LiveBus.lastConfirmedAt > lastRenderedConfirmAt) {
-                        lastRenderedConfirmAt = LiveBus.lastConfirmedAt
-                        binding.confirmedBanner.visibility = View.VISIBLE
-                        binding.tvConfirmedText.text = LiveBus.lastConfirmedText
-                        bannerHide?.cancel()
-                        bannerHide = uiScope.launch {
-                            delay(BANNER_VISIBLE_MS)
-                            binding.confirmedBanner.visibility = View.GONE
-                        }
-                    }
                     refreshLog()
                 }
                 delay(STATUS_TICK_MS)
@@ -679,13 +655,13 @@ class MainActivity : AppCompatActivity() {
             )
             runOnUiThread {
                 recent.forEach { e ->
-                    if (FusionEngine.isHumanAsserted(e)) {
+                    if (e.source == SensorRegistry.MANUAL.id) {
                         sessionLog.append(SessionLog.Kind.TAG, "✋ tagged: ${e.type.replace("_", " ")}", e.timestamp)
                     } else {
                         sessionLog.append(
                             SessionLog.Kind.EVENT,
                             "${SensorRegistry.iconFor(e.source)} ${e.type.replace("_", " ")}" +
-                                " · ${SensorRegistry.labelFor(e.source)} · ${e.status}",
+                                " · ${SensorRegistry.labelFor(e.source)}",
                             e.timestamp
                         )
                     }
@@ -813,12 +789,9 @@ class MainActivity : AppCompatActivity() {
     /**
      * Writes a human-asserted incident into the active session's chain.
      *
-     * Deliberately not fused: [FusionEngine] leaves human assertions out of its
-     * source count, so a tag can never become a CONFIRMED incident on the
-     * strength of its own presence — one person tapping once is not two
-     * independent sensors agreeing. It is stored as [SensorRegistry.MANUAL] with
-     * status MANUAL, which is what keeps the distinction visible in the timeline,
-     * the detail view and [QueryEngine].
+     * A tag anchors on a session's chain, so there has to be one. The button is
+     * disabled while idle; this covers the race where the session ends between
+     * the tap and the write.
      *
      * Everything else matches a sensor event: the same single chain writer (so
      * the tag joins the session in custody order no matter what fires beside it),
@@ -847,7 +820,6 @@ class MainActivity : AppCompatActivity() {
             timestamp  = System.currentTimeMillis(),
             source     = SensorRegistry.MANUAL.id,
             confidence = 1f,
-            status     = "MANUAL"
         )
 
         appScope.launch {
@@ -862,7 +834,7 @@ class MainActivity : AppCompatActivity() {
                 LiveBus.eventCount += 1
                 eventCount = LiveBus.eventCount
                 appendLog(SessionLog.Kind.TAG, "✋ tagged: $title", stored.timestamp)
-                updateStatusBar(lastEventType = title, lastStatus = "MANUAL")
+                updateStatusBar(lastEventType = title)
                 Toast.makeText(this@MainActivity, "Tagged: $title", Toast.LENGTH_SHORT).show()
             }
         }

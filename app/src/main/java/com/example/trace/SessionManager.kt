@@ -157,7 +157,6 @@ object SessionManager {
             state = state,
             endedAt = eventDao.lastTimestampForSession(session.id) ?: System.currentTimeMillis(),
             eventCount = eventDao.countEventsForSession(session.id),
-            confirmedCount = eventDao.countEventsForSessionWithStatus(session.id, "CONFIRMED")
         )
 
     /** "|"-separated ids of every live capture sensor. */

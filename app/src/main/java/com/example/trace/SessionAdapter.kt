@@ -57,7 +57,7 @@ class SessionAdapter(
             }
             binding.tvMeta.text =
                 "${dateFmt.format(Date(session.startedAt))} · $duration · " +
-                "${session.eventCount} event(s), ${session.confirmedCount} confirmed"
+                "${session.eventCount} event(s)"
 
             binding.tvStatePill.text = stateWord.uppercase()
             val (bg, fg) = when (session.state) {

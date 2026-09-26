@@ -4,12 +4,11 @@ package com.example.trace
  * TRACE — Sensor Registry
  *
  * Single source of truth for every sensor that participates in the
- * observation -> event extraction -> fusion pipeline. Each entry pairs the
- * string source ID used by [Observation]/[Event] with:
+ * observation pipeline. Each entry pairs the string source ID used by
+ * [Observation]/[Event] with:
  *   - the Android.hardware.Sensor type constant it is read from
  *   - a display icon
- *   - the incident-reconstruction role it plays (which event types its
- *     evidence supports)
+ *   - a description of what physical phenomenon it measures
  *
  * Sensors that can NOT contribute meaningful signal to physical incident
  * reconstruction are deliberately NOT listed here:
@@ -19,9 +18,6 @@ package com.example.trace
  *     gyroscope + linear-acceleration signals which carry the dynamics.
  *   - Wi-Fi / Bluetooth RSSI: seconds-scale scans, poor spatial resolution,
  *     and heavy permission burden for near-zero demo value.
- *   - Vibration motor: an actuator, deliberately NOT used. TRACE must stay
- *     silent during a live session, so CONFIRMED incidents give no haptic
- *     feedback at all.
  */
 object SensorRegistry {
 
@@ -33,25 +29,25 @@ object SensorRegistry {
     )
 
     val CAMERA = SensorSpec("camera", -1, "📷",
-        "Frame differencing: object_moves, object_falls")
+        "Frame differencing — detects visual changes between frames")
     val AUDIO = SensorSpec("audio", -1, "🔊",
-        "Amplitude envelope: alarm, abnormal_sound")
+        "Amplitude envelope — detects loud or unusual sounds")
     val MOTION = SensorSpec("motion", android.hardware.Sensor.TYPE_ACCELEROMETER, "📳",
-        "Jerk analysis: impact, object_moves")
+        "Jerk analysis — detects bumps, shakes, and movement")
     val MAGNETOMETER = SensorSpec("magnetometer", android.hardware.Sensor.TYPE_MAGNETIC_FIELD, "🧲",
-        "Ambient field distortion: door_swing, door_slam, metal_moves")
+        "Ambient magnetic field — detects ferrous objects or field distortion")
     val BAROMETER = SensorSpec("barometer", android.hardware.Sensor.TYPE_PRESSURE, "🌀",
-        "Air-pressure transients from sudden openings: pressure_shift")
+        "Air pressure — detects sudden pressure transients from openings")
     val LIGHT = SensorSpec("light", android.hardware.Sensor.TYPE_LIGHT, "💡",
-        "Illumination drop: lights_off (light source interrupted)")
+        "Illumination level — detects sudden brightness changes")
     val LINEAR = SensorSpec("linear", android.hardware.Sensor.TYPE_LINEAR_ACCELERATION, "🪂",
-        "Gravity-free free-fall signature: object_falls, device_falls")
+        "Gravity-free acceleration — detects free-fall and linear motion")
     val GYROSCOPE = SensorSpec("gyroscope", android.hardware.Sensor.TYPE_GYROSCOPE, "🔄",
-        "Angular velocity: device_falls, device_motion")
+        "Angular velocity — detects rotation and spin")
     val STEP = SensorSpec("step", android.hardware.Sensor.TYPE_STEP_DETECTOR, "👣",
-        "Footsteps near the phone: person_present")
+        "Footstep detection — detects nearby footsteps")
     val SIGMOTION = SensorSpec("sigmotion", android.hardware.Sensor.TYPE_SIGNIFICANT_MOTION, "🚶",
-        "Hardware activity trigger: person_present")
+        "Hardware motion trigger — detects large movements with low power")
 
     /** All sensors that feed Observations into the pipeline. */
     val ALL = listOf(
@@ -65,13 +61,13 @@ object SensorRegistry {
      * Deliberately absent from [ALL], because it is not a sensor and must not
      * leak into the places that assume one:
      *   - a session's sensor set and the availability report,
-     *   - [FusionEngine]'s count of independent sources, and
-     *   - [Event.sensorBreakdown] (see [FusionEngine.buildEnrichedEvent]).
+     *   - the count of independent sources, and
+     *   - [Event.sensorBreakdown].
      * A tag has no `Sensor.TYPE_*` to read, hence the -1 placeholder shared with
      * the other software sources.
      */
     val MANUAL = SensorSpec("manual", -1, "✋",
-        "Operator assertion: an incident a human on scene reported directly")
+        "Operator assertion — an incident a human on scene reported directly")
 
     /** Sources that are NOT physical sensors (human input only). */
     val NON_SENSOR = listOf(MANUAL)
@@ -96,8 +92,7 @@ object SensorRegistry {
 
     /**
      * Logs which of the pipeline sensors physically exist on this device.
-     * Sensors absent from hardware simply never emit Observations — the
-     * fusion engine treats an absent sensor the same as a silent one.
+     * Sensors absent from hardware simply never emit Observations.
      */
     fun availabilityReport(sensorManager: android.hardware.SensorManager): String =
         ALL.filter { it.type > 0 }.joinToString("\n") { spec ->

@@ -21,14 +21,6 @@
         android:padding="14dp"
         android:minHeight="72dp">
 
-        <!-- Coloured status strip -->
-        <View
-            android:id="@+id/statusStrip"
-            android:layout_width="5dp"
-            android:layout_height="match_parent"
-            android:layout_marginEnd="14dp"
-            android:background="@color/trace_sensor_icon" />
-
         <!-- Icon + Event info -->
         <LinearLayout
             android:layout_width="0dp"
@@ -81,22 +73,6 @@
                 android:text="src: motion" />
 
         </LinearLayout>
-
-        <!-- Status pill badge -->
-        <TextView
-            android:id="@+id/tvStatus"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_vertical"
-            android:paddingStart="10dp"
-            android:paddingEnd="10dp"
-            android:paddingTop="5dp"
-            android:paddingBottom="5dp"
-            android:textSize="9sp"
-            android:textStyle="bold"
-            android:letterSpacing="0.05"
-            android:background="@drawable/status_pill"
-            android:text="UNCONFIRMED" />
 
     </LinearLayout>
 
