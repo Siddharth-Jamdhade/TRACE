@@ -15,6 +15,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
+// Preview.SurfaceProvider type used by CaptureService.previewSurfaceProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -91,10 +92,18 @@ class MainActivity : AppCompatActivity() {
     private val appScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     // ── Permissions ───────────────────────────────────────────────────────
-    private val REQUIRED_PERMISSIONS = arrayOf(
-        Manifest.permission.CAMERA,
-        Manifest.permission.RECORD_AUDIO
-    )
+    private val REQUIRED_PERMISSIONS: Array<String>
+        get() {
+            val base = mutableListOf(
+                Manifest.permission.CAMERA,
+                Manifest.permission.RECORD_AUDIO
+            )
+            // Step detector and significant motion sensors require this on API 29+.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                base.add(Manifest.permission.ACTIVITY_RECOGNITION)
+            }
+            return base.toTypedArray()
+        }
     private val PERMISSION_REQUEST_CODE = 100
 
     // ── Evidence Lock ─────────────────────────────────────────────────────
@@ -148,11 +157,24 @@ class MainActivity : AppCompatActivity() {
     /**
      * Binds the viewfinder preview — this screen's only camera role.
      *
-     * Deliberately never unbindAll(): while a session is capturing, the service
-     * owns analysis + snapshot use cases on the same camera and they must
-     * survive this screen rebinding its preview.
+     * When a session is capturing, the service owns ALL camera use cases
+     * (preview + analysis + snapshot) under the service lifecycle, with the
+     * preview surface provided through [CaptureService.previewSurfaceProvider].
+     * This avoids the CAM FREEZES bug caused by mixing two lifecycle owners
+     * on the same camera device.
+     *
+     * When idle, this screen binds its own Preview use case to the activity
+     * lifecycle so the operator can aim before arming.
      */
     private fun bindPreviewOnly() {
+        // While a session is armed, the service owns the camera exclusively.
+        if (activeSession != null) {
+            CaptureService.previewSurfaceProvider = binding.cameraPreview.surfaceProvider
+            // Unbind any leftover preview from the activity lifecycle so CameraX
+            // sees only one lifecycle owner for this camera.
+            if (previewUseCase != null) unbindCamera()
+            return
+        }
         val future = ProcessCameraProvider.getInstance(this)
         future.addListener({
             try {

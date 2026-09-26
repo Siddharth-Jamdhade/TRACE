@@ -11,8 +11,12 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.hardware.TriggerEvent
+import android.hardware.TriggerEventListener
 import android.media.MediaRecorder
 import android.os.Build
+import android.os.Handler
+import android.os.HandlerThread
 import android.os.IBinder
 import android.util.Log
 import android.util.Size
@@ -21,6 +25,7 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
+import androidx.camera.core.Preview
 import androidx.camera.core.UseCase
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.NotificationCompat
@@ -75,6 +80,24 @@ class CaptureService : Service(), LifecycleOwner {
     private val baseline = RollingBaseline()
     private val lastEventTime = ConcurrentHashMap<String, Long>()
 
+    // ── Dedicated sensor thread — keeps sensor callbacks off the main thread ─
+    private val sensorThread = HandlerThread("trace-sensors", android.os.Process.THREAD_PRIORITY_MORE_FAVORABLE).apply { start() }
+    private val sensorHandler = Handler(sensorThread.looper)
+
+    // ── Monotonic time (all sensor timestamps, never System.currentTimeMillis()) ─
+    /**
+     * Offset used to convert monotonic milliseconds (System.nanoTime()/1e6) to
+     * wall-clock milliseconds for database storage. Computed once at service
+     * creation so clock adjustments during a session don't skew event times.
+     */
+    private val wallClockOffsetMs = System.currentTimeMillis() - System.nanoTime() / 1_000_000
+
+    /** Monotonic milliseconds since boot — the clock domain for all observations. */
+    private fun monoTimeMs(): Long = System.nanoTime() / 1_000_000
+
+    /** Converts a monotonic observation timestamp to wall-clock for DB storage. */
+    private fun observationToWallClock(monoMs: Long): Long = monoMs + wallClockOffsetMs
+
     private var lastX = Float.NaN
     private var lastY = Float.NaN
     private var lastZ = Float.NaN
@@ -110,12 +133,15 @@ class CaptureService : Service(), LifecycleOwner {
     private val AUDIO_MAX = 16147
     private val CAMERA_CHANGE_THRESHOLD = 0.05f
     private val CAMERA_MAX_CHANGE = 0.30f
-    private val AMPLITUDE_POLL_MS = 150L
+    private val AMPLITUDE_POLL_MS = 60L
     private val REOPEN_RETRY_POLLS = 7
     private val EVENT_COOLDOWN_MS = 1000L
 
-    private val TEMP_AUDIO_FILE = "temp_audio.amr"
-    private val EVIDENCE_EXT = ".amr"
+    // Dual-file alternating recording eliminates the save gap:
+    // record into file A, save from file A while recording into file B, then flip.
+    private val TEMP_AUDIO_PATTERN = "temp_audio_%d.awb"
+    private var activeAudioSlot = 0
+    private val EVIDENCE_EXT = ".awb"
 
     /** [SensorRegistry] ids the armed session captures from. */
     private var armedSensorIds: Set<String> = emptySet()
@@ -127,7 +153,7 @@ class CaptureService : Service(), LifecycleOwner {
     private lateinit var linearListener: SensorEventListener
     private lateinit var gyroListener: SensorEventListener
     private lateinit var stepListener: SensorEventListener
-    private lateinit var sigMotionListener: SensorEventListener
+    private lateinit var sigMotionListener: TriggerEventListener
 
     // ── Service lifecycle ─────────────────────────────────────────────────
 
@@ -169,6 +195,9 @@ class CaptureService : Service(), LifecycleOwner {
         stopCapturePipelines()
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
         cameraExecutor.shutdown()
+
+        // Shut down the dedicated sensor thread.
+        sensorThread.quitSafely()
 
         // The recorder belongs to [audioDispatcher]; teardown runs there.
         kotlinx.coroutines.runBlocking {
@@ -251,6 +280,16 @@ class CaptureService : Service(), LifecycleOwner {
         @Volatile
         var running: Boolean = false
             private set
+
+        /**
+         * Surface provider for the live viewfinder.
+         *
+         * Set by [MainActivity] when the service owns the camera, nulled when
+         * the service unbinds. The service reads this during [bindCapture] to
+         * include a [Preview] use case alongside analysis and capture.
+         */
+        @Volatile
+        var previewSurfaceProvider: Preview.SurfaceProvider? = null
 
         private val stateLock = Any()
 
@@ -370,14 +409,16 @@ class CaptureService : Service(), LifecycleOwner {
             val dX = x - lastX
             val dY = y - lastY
             val dZ = z - lastZ
-            val jerk = kotlin.math.sqrt(dX * dX + dY * dY + dZ * dZ)
-            val confidence = toConfidence(jerk, MOTION_THRESHOLD, MOTION_MAX)
+            val deltaAccel = kotlin.math.sqrt(dX * dX + dY * dY + dZ * dZ)
+            val confidence = toConfidence(deltaAccel, MOTION_THRESHOLD, MOTION_MAX)
             if (confidence > 0f) {
-                onObservation(Observation("motion", confidence, System.currentTimeMillis()))
+                onObservation(Observation("motion", confidence, event.timestamp / 1_000_000L))
             }
             lastX = x; lastY = y; lastZ = z
         }
-        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+                onSensorAccuracyChanged("motion", accuracy)
+            }
     }
 
     private fun createSensorListeners() {
@@ -391,10 +432,12 @@ class CaptureService : Service(), LifecycleOwner {
                 val deltaUf = baseline.feed("magnetometer", magnitude)
                 val confidence = toConfidence(deltaUf, 10f, 40f)
                 if (confidence > 0f) {
-                    onObservation(Observation("magnetometer", confidence, System.currentTimeMillis()))
+                    onObservation(Observation("magnetometer", confidence, event.timestamp / 1_000_000L))
                 }
             }
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+                onSensorAccuracyChanged("magnetometer", accuracy)
+            }
         }
         baroListener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
@@ -402,10 +445,12 @@ class CaptureService : Service(), LifecycleOwner {
                 val delta = baseline.feed("barometer", hPa)
                 val confidence = toConfidence(delta, 0.3f, 1.2f)
                 if (confidence > 0f) {
-                    onObservation(Observation("barometer", confidence, System.currentTimeMillis()))
+                    onObservation(Observation("barometer", confidence, event.timestamp / 1_000_000L))
                 }
             }
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+                onSensorAccuracyChanged("barometer", accuracy)
+            }
         }
         lightListener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
@@ -414,11 +459,13 @@ class CaptureService : Service(), LifecycleOwner {
                 if (lux < baseline.get("light") && delta > 0f) {
                     val confidence = toConfidence(delta, 100f, 400f)
                     if (confidence > 0f) {
-                        onObservation(Observation("light", confidence, System.currentTimeMillis()))
+                        onObservation(Observation("light", confidence, event.timestamp / 1_000_000L))
                     }
                 }
             }
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+                onSensorAccuracyChanged("light", accuracy)
+            }
         }
         linearListener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
@@ -429,10 +476,12 @@ class CaptureService : Service(), LifecycleOwner {
                 )
                 val confidence = if (magnitude < 2.5f) toConfidence(2.5f - magnitude, 0f, 2.5f) else 0f
                 if (confidence > 0f) {
-                    onObservation(Observation("linear", confidence, System.currentTimeMillis()))
+                    onObservation(Observation("linear", confidence, event.timestamp / 1_000_000L))
                 }
             }
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+                onSensorAccuracyChanged("linear", accuracy)
+            }
         }
         gyroListener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
@@ -443,22 +492,28 @@ class CaptureService : Service(), LifecycleOwner {
                 )
                 val confidence = toConfidence(magnitude, 1.5f, 8f)
                 if (confidence > 0f) {
-                    onObservation(Observation("gyroscope", confidence, System.currentTimeMillis()))
+                    onObservation(Observation("gyroscope", confidence, event.timestamp / 1_000_000L))
                 }
             }
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+                onSensorAccuracyChanged("gyroscope", accuracy)
+            }
         }
         stepListener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
-                onObservation(Observation("step", 0.5f, System.currentTimeMillis()))
+                onObservation(Observation("step", 0.5f, event.timestamp / 1_000_000L))
             }
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+                onSensorAccuracyChanged("step", accuracy)
+            }
         }
-        sigMotionListener = object : SensorEventListener {
-            override fun onSensorChanged(event: SensorEvent) {
-                onObservation(Observation("sigmotion", 0.5f, System.currentTimeMillis()))
+        sigMotionListener = object : TriggerEventListener() {
+            override fun onTrigger(event: TriggerEvent) {
+                onObservation(Observation("sigmotion", 0.5f, monoTimeMs()))
+                // Significant Motion is a one-shot trigger sensor — re-arm it
+                // so it can fire again if motion is detected later.
+                rearmSigMotion()
             }
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
         }
     }
 
@@ -466,29 +521,31 @@ class CaptureService : Service(), LifecycleOwner {
         val ids = armedSensorIds
         if (SensorRegistry.MOTION.id in ids) {
             sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let {
-                sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_GAME)
+                sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_GAME, sensorHandler)
             }
         }
         if (SensorRegistry.MAGNETOMETER.id in ids) {
-            registerIfAvailable(Sensor.TYPE_MAGNETIC_FIELD, magnetListener, SensorManager.SENSOR_DELAY_GAME)
+            registerIfAvailable(Sensor.TYPE_MAGNETIC_FIELD, magnetListener, SensorManager.SENSOR_DELAY_UI, sensorHandler)
         }
         if (SensorRegistry.BAROMETER.id in ids) {
-            registerIfAvailable(Sensor.TYPE_PRESSURE, baroListener, SensorManager.SENSOR_DELAY_UI)
+            registerIfAvailable(Sensor.TYPE_PRESSURE, baroListener, SensorManager.SENSOR_DELAY_NORMAL, sensorHandler)
         }
         if (SensorRegistry.LIGHT.id in ids) {
-            registerIfAvailable(Sensor.TYPE_LIGHT, lightListener, SensorManager.SENSOR_DELAY_UI)
+            registerIfAvailable(Sensor.TYPE_LIGHT, lightListener, SensorManager.SENSOR_DELAY_NORMAL, sensorHandler)
         }
         if (SensorRegistry.LINEAR.id in ids) {
-            registerIfAvailable(Sensor.TYPE_LINEAR_ACCELERATION, linearListener, SensorManager.SENSOR_DELAY_GAME)
+            registerIfAvailable(Sensor.TYPE_LINEAR_ACCELERATION, linearListener, SensorManager.SENSOR_DELAY_GAME, sensorHandler)
         }
         if (SensorRegistry.GYROSCOPE.id in ids) {
-            registerIfAvailable(Sensor.TYPE_GYROSCOPE, gyroListener, SensorManager.SENSOR_DELAY_GAME)
+            registerIfAvailable(Sensor.TYPE_GYROSCOPE, gyroListener, SensorManager.SENSOR_DELAY_GAME, sensorHandler)
         }
         if (SensorRegistry.STEP.id in ids) {
-            registerIfAvailable(Sensor.TYPE_STEP_DETECTOR, stepListener, SensorManager.SENSOR_DELAY_UI)
+            registerIfAvailable(Sensor.TYPE_STEP_DETECTOR, stepListener, SensorManager.SENSOR_DELAY_UI, sensorHandler)
         }
         if (SensorRegistry.SIGMOTION.id in ids) {
-            registerIfAvailable(Sensor.TYPE_SIGNIFICANT_MOTION, sigMotionListener, SensorManager.SENSOR_DELAY_UI)
+            // TYPE_SIGNIFICANT_MOTION is a one-shot trigger sensor — it needs
+            // requestTriggerSensor, not registerListener (which silently fails).
+            requestSigMotion()
         }
     }
 
@@ -500,12 +557,44 @@ class CaptureService : Service(), LifecycleOwner {
         if (::linearListener.isInitialized) sensorManager.unregisterListener(linearListener)
         if (::gyroListener.isInitialized) sensorManager.unregisterListener(gyroListener)
         if (::stepListener.isInitialized) sensorManager.unregisterListener(stepListener)
-        if (::sigMotionListener.isInitialized) sensorManager.unregisterListener(sigMotionListener)
+        if (::sigMotionListener.isInitialized) {
+            sensorManager.cancelTriggerSensor(sigMotionListener, null)
+        }
     }
 
-    private fun registerIfAvailable(type: Int, listener: SensorEventListener, rate: Int) {
+    // ── Significant Motion (one-shot trigger sensor) ─────────────────────────
+
+    /** Arms the one-shot significant-motion trigger. */
+    private fun requestSigMotion() {
+        if (!::sigMotionListener.isInitialized) return
+        val sensor = sensorManager.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION) ?: return
+        sensorManager.requestTriggerSensor(sigMotionListener, sensor)
+    }
+
+    /**
+     * Re-arms after a trigger fires. Significant Motion is a one-shot sensor
+     * — after it fires, the listener is consumed and must be re-requested.
+     */
+    private fun rearmSigMotion() {
+        requestSigMotion()
+    }
+
+    private fun registerIfAvailable(type: Int, listener: SensorEventListener, rate: Int, handler: Handler? = null) {
         val sensor = sensorManager.getDefaultSensor(type) ?: return
-        sensorManager.registerListener(listener, sensor, rate)
+        sensorManager.registerListener(listener, sensor, rate, handler)
+    }
+
+    /**
+     * Logs sensor accuracy transitions. An accuracy of [SensorManager.SENSOR_STATUS_ACCURACY_LOW]
+     * means the sensor may be returning unreliable data — calibration is needed.
+     * The service logs the change so the operator can investigate in the session record.
+     */
+    private fun onSensorAccuracyChanged(sensorName: String, accuracy: Int) {
+        if (accuracy == SensorManager.SENSOR_STATUS_ACCURACY_LOW) {
+            Log.w("TRACE", "$sensorName accuracy: LOW — readings may be unreliable")
+        } else if (accuracy == SensorManager.SENSOR_STATUS_UNRELIABLE) {
+            Log.w("TRACE", "$sensorName accuracy: UNRELIABLE — data should not be trusted")
+        }
     }
 
     private fun toConfidence(value: Float, threshold: Float, max: Float): Float {
@@ -516,6 +605,9 @@ class CaptureService : Service(), LifecycleOwner {
     // ── Camera: analysis + snapshot (no preview — the UI owns that) ──────
 
     private var serviceAnalysis: ImageAnalysis? = null
+
+    /** Service-bound preview use case (so we can unbind it without unbinding the activity's). */
+    private var servicePreview: Preview? = null
 
     private fun bindCapture() {
         val ids = armedSensorIds
@@ -533,12 +625,22 @@ class CaptureService : Service(), LifecycleOwner {
                     .build()
                 imageCapture = capture
                 serviceAnalysis = analysis
-                // Deliberately NO unbindAll(): the activity's viewfinder Preview
-                // is bound by a different lifecycle owner and must survive.
+
+                // Build a preview use case if the activity provided a surface provider.
+                // unbindAll() first: the activity's prior Preview (if any) was bound to
+                // the Activity lifecycle, and mixing two lifecycle owners on the same
+                // camera causes CAM FREEZES (see commit 616bde3).
+                provider.unbindAll()
+                val surfaceProvider = previewSurfaceProvider
+                val preview = surfaceProvider?.let {
+                    Preview.Builder().build().also { p -> p.setSurfaceProvider(it) }
+                }
+                servicePreview = preview
+
                 provider.bindToLifecycle(
                     this,
                     CameraSelector.DEFAULT_BACK_CAMERA,
-                    analysis, capture
+                    *(listOfNotNull(preview, analysis, capture).toTypedArray())
                 )
             } catch (e: Exception) {
                 Log.e("TRACE", "Service camera bind failed", e)
@@ -551,16 +653,19 @@ class CaptureService : Service(), LifecycleOwner {
         imageCapture = null
         capturePending = false
         val analysis = serviceAnalysis
+        val preview = servicePreview
         serviceAnalysis = null
+        servicePreview = null
+        previewSurfaceProvider = null
         val future = ProcessCameraProvider.getInstance(this)
         future.addListener({
             try {
                 val provider = future.get()
-                // Unbind only this owner's use cases, not the activity's preview.
                 if (analysis != null) {
                     runCatching { provider.unbind(analysis) }
                 }
                 imageCapture?.let { runCatching { provider.unbind(it) } }
+                preview?.let { runCatching { provider.unbind(it) } }
             } catch (e: Exception) {
                 Log.w("TRACE", "Service camera unbind failed", e)
             }
@@ -598,7 +703,7 @@ class CaptureService : Service(), LifecycleOwner {
                 val changeRatio = changedSamples.toFloat() / totalSamples
                 val confidence = toConfidence(changeRatio, CAMERA_CHANGE_THRESHOLD, CAMERA_MAX_CHANGE)
                 if (confidence > 0f) {
-                    onObservation(Observation("camera", confidence, System.currentTimeMillis()))
+                    onObservation(Observation("camera", confidence, imageProxy.imageInfo.timestamp / 1_000_000L))
                 }
             }
             previousFrame = data
@@ -662,7 +767,7 @@ class CaptureService : Service(), LifecycleOwner {
                         amplitude.toFloat(), AUDIO_THRESHOLD.toFloat(), AUDIO_MAX.toFloat()
                     )
                     if (confidence > 0f) {
-                        onObservation(Observation("audio", confidence, System.currentTimeMillis()))
+                        onObservation(Observation("audio", confidence, monoTimeMs()))
                     }
                 }
                 delay(AMPLITUDE_POLL_MS)
@@ -677,7 +782,7 @@ class CaptureService : Service(), LifecycleOwner {
         }
     }
 
-    private fun openRecorder(): Boolean {
+    private fun openRecorder(slot: Int = activeAudioSlot): Boolean {
         if (audioTornDown) return false
         val recorder = try {
             newRecorder()
@@ -686,11 +791,12 @@ class CaptureService : Service(), LifecycleOwner {
             LiveBus.log.append(SessionLog.Kind.ERROR, "mic failed: ${e.message}")
             return false
         }
+        val path = File(cacheDir, TEMP_AUDIO_PATTERN.format(slot)).absolutePath
         return try {
             recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
-            recorder.setOutputFormat(MediaRecorder.OutputFormat.AMR_NB)
-            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
-            recorder.setOutputFile(File(cacheDir, TEMP_AUDIO_FILE).absolutePath)
+            recorder.setOutputFormat(MediaRecorder.OutputFormat.AMR_WB)
+            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_WB)
+            recorder.setOutputFile(path)
             recorder.prepare()
             recorder.start()
             mediaRecorder = recorder
@@ -751,13 +857,18 @@ class CaptureService : Service(), LifecycleOwner {
     /** Freezes the current mic buffer as the event's evidence clip, with hash. */
     private suspend fun saveEvidenceClip(eventId: Long): String? = withContext(audioDispatcher) {
         if (audioTornDown) return@withContext null
-        val source = File(cacheDir, TEMP_AUDIO_FILE)
+
+        // Flip to the other slot so recording continues without a gap.
+        val saveSlot = activeAudioSlot
+        val nextSlot = 1 - saveSlot
+        val source = File(cacheDir, TEMP_AUDIO_PATTERN.format(saveSlot))
         if (!recorderStarted || !source.exists() || source.length() == 0L) return@withContext null
 
-        if (!stopRecorder()) {
-            openRecorder()
-            return@withContext null
-        }
+        // Stop the current slot and immediately open the next one.
+        if (!stopRecorder()) return@withContext null
+        activeAudioSlot = nextSlot
+        openRecorder(nextSlot)  // best-effort: recording continues even if this fails
+
         try {
             val dest = File(EvidenceFiles.dir(this@CaptureService), "evidence_$eventId$EVIDENCE_EXT")
             source.copyTo(dest, overwrite = true)
@@ -770,7 +881,7 @@ class CaptureService : Service(), LifecycleOwner {
             Log.e("TRACE", "Evidence clip save failed", e)
             null
         } finally {
-            openRecorder()
+            source.delete()
         }
     }
 
@@ -794,13 +905,18 @@ class CaptureService : Service(), LifecycleOwner {
 
         val eventType = EventExtractor.extract(obs) ?: return
 
+        // Cooldown: compare in the monotonic clock domain (no clock-jump risk).
         val lastTime = lastEventTime[eventType] ?: 0L
         if (obs.timestamp - lastTime < EVENT_COOLDOWN_MS) return
         lastEventTime[eventType] = obs.timestamp
 
+        // Convert monotonic observation timestamp to wall-clock for database storage
+        // so that displayed times are human-readable wall-clock values.
+        val wallTimestamp = observationToWallClock(obs.timestamp)
+
         val baseEvent = Event(
             type = eventType,
-            timestamp = obs.timestamp,
+            timestamp = wallTimestamp,
             source = obs.source,
             confidence = obs.confidence
         )
@@ -810,14 +926,15 @@ class CaptureService : Service(), LifecycleOwner {
             val session = database.sessionDao().getSessionById(sessionId) ?: return@launch
             if (session.state != Session.STATE_ACTIVE) return@launch
 
-            val windowStart = obs.timestamp - FusionEngine.FUSION_WINDOW_MS
-            val windowEnd = obs.timestamp + FusionEngine.FUSION_WINDOW_MS
+            // Fusion window in wall-clock domain (matching stored Event timestamps).
+            // Query BEFORE the ChainWriter lock so the DB call doesn't serialise
+            // concurrent events behind the chain mutex (see ChainWriter.kt docs).
+            val windowStart = wallTimestamp - FusionEngine.FUSION_WINDOW_MS
+            val windowEnd = wallTimestamp + FusionEngine.FUSION_WINDOW_MS
+            val windowEvents = database.eventDao().getEventsInWindowForSession(session.id, windowStart, windowEnd)
 
             val finalEvent = ChainWriter.append(database.eventDao(), session, baseEvent) { inserted ->
-                FusionEngine.buildEnrichedEvent(
-                    inserted,
-                    database.eventDao().getEventsInWindowForSession(session.id, windowStart, windowEnd)
-                )
+                FusionEngine.buildEnrichedEvent(inserted, windowEvents)
             }
             val newId = finalEvent.id
             Log.d("TRACE", "EVENT SAVED: id=$newId type=$eventType status=${finalEvent.status}")
@@ -903,11 +1020,12 @@ object LiveBus {
     @Volatile
     var confMotion: Float = 0f
 
+    /** Only updates if [value] differs from the current, to avoid redundant UI redraws. */
     fun setConfidence(source: String, value: Float) {
         when (source) {
-            "camera" -> confCamera = value
-            "audio" -> confAudio = value
-            "motion" -> confMotion = value
+            "camera" -> { if (value != confCamera) confCamera = value }
+            "audio"  -> { if (value != confAudio) confAudio = value }
+            "motion" -> { if (value != confMotion) confMotion = value }
         }
     }
 }
