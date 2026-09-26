@@ -16,13 +16,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!--
-      Top app bar, overlaid on the preview so the camera stays full-bleed.
-
-      The brand and the session status chip are plain siblings rather than
-      Toolbar children: a Toolbar applies its own gravity rules to child views,
-      which would fight the menu icons for the right edge of the bar.
-    -->
+    <!-- Top app bar, overlaid on the preview -->
     <LinearLayout
         android:id="@+id/appBar"
         android:layout_width="0dp"
@@ -41,11 +35,10 @@
             android:paddingEnd="10dp"
             android:text="TRACE"
             android:textColor="?attr/colorPrimary"
-            android:textSize="17sp"
-            android:textStyle="bold"
-            android:letterSpacing="0.06" />
+            android:textSize="18sp"
+            android:textStyle="bold" />
 
-        <!-- Capture state: REC / LOCKED / IDLE. Text carries the meaning, colour only reinforces it. -->
+        <!-- Session status chip: REC / LOCKED / IDLE -->
         <com.google.android.material.chip.Chip
             android:id="@+id/chipSessionStatus"
             android:layout_width="wrap_content"
@@ -55,9 +48,8 @@
             android:focusable="false"
             android:text="IDLE"
             android:textSize="11sp"
-            android:fontFamily="monospace"
-            android:textColor="@color/trace_on_surface_variant"
-            app:chipBackgroundColor="@color/trace_surface_container_high"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            app:chipBackgroundColor="?attr/colorSurfaceContainerHigh"
             app:chipMinHeight="26dp"
             app:ensureMinTouchTargetSize="false" />
 
@@ -73,12 +65,7 @@
 
     </LinearLayout>
 
-    <!--
-      Shown INSTEAD of the viewfinder when the armed session captures no camera.
-
-      A blank black preview would read as a broken camera at exactly the moment the
-      app is working as configured, so the space states what is recording instead.
-    -->
+    <!-- Sensor panel (shown when camera isn't selected) -->
     <LinearLayout
         android:id="@+id/sensorPanel"
         android:layout_width="0dp"
@@ -96,10 +83,9 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="CAPTURING"
+            android:text="Capturing"
             android:textColor="?attr/colorPrimary"
-            android:textSize="12sp"
-            android:letterSpacing="0.18"
+            android:textSize="14sp"
             android:textStyle="bold" />
 
         <TextView
@@ -107,7 +93,6 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
-            android:fontFamily="monospace"
             android:gravity="center"
             android:lineSpacingExtra="6dp"
             android:textColor="?attr/colorOnSurface"
@@ -138,14 +123,14 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <!-- Green accent bar at the top of HUD -->
+        <!-- Accent bar -->
         <View
             android:layout_width="match_parent"
             android:layout_height="2dp"
             android:background="?attr/colorPrimary"
             android:layout_marginBottom="8dp" />
 
-        <!-- FEATURE A: Live Sensor Confidence Row -->
+        <!-- Live sensor confidence row -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -157,10 +142,9 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="📷 --"
+                android:text="--"
                 android:textColor="@color/trace_sensor_camera"
                 android:textSize="11sp"
-                android:fontFamily="monospace"
                 android:gravity="center" />
 
             <TextView
@@ -168,10 +152,9 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="🔊 --"
+                android:text="--"
                 android:textColor="@color/trace_sensor_audio"
                 android:textSize="11sp"
-                android:fontFamily="monospace"
                 android:gravity="center" />
 
             <TextView
@@ -179,23 +162,14 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="📳 --"
+                android:text="--"
                 android:textColor="@color/trace_sensor_motion"
                 android:textSize="11sp"
-                android:fontFamily="monospace"
                 android:gravity="center" />
 
         </LinearLayout>
 
-        <!--
-          FEATURE: Live session log tail (bottom quarter).
-
-          A runtime transcript of this screen — recorded events, operator tags,
-          lifecycle and capture errors — newest at the bottom, next to the
-          action buttons. It is NOT evidence: the hash-chained database is, and
-          this buffer is rebuilt from it whenever the screen re-attaches to a
-          running session. See SessionLog.
-        -->
+        <!-- Session log section -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -205,10 +179,9 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="SESSION LOG"
+                android:text="Session log"
                 android:textColor="?attr/colorOnSurfaceVariant"
                 android:textSize="10sp"
-                android:letterSpacing="0.14"
                 android:textStyle="bold" />
 
             <Space
@@ -222,15 +195,10 @@
                 android:layout_height="wrap_content"
                 android:text="0 events"
                 android:textColor="?attr/colorOnSurfaceVariant"
-                android:textSize="10sp"
-                android:fontFamily="monospace" />
+                android:textSize="10sp" />
 
         </LinearLayout>
 
-        <!--
-          Fixed height, not weight: the HUD is wrap_content, so the tail must
-          size itself. ~6 rows at the 11sp line height — a tail, not a takeover.
-        -->
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/logRecycler"
             android:layout_width="match_parent"
@@ -247,21 +215,17 @@
             android:layout_marginTop="6dp"
             android:textColor="?attr/colorOnSurface"
             android:textSize="13sp"
-            android:fontFamily="monospace"
-            android:lineSpacingExtra="4dp"
-            android:text="TRACE IDLE — no session armed, nothing is being recorded" />
+            android:lineSpacingExtra="3dp"
+            android:text="TRACE idle — no session armed" />
 
-        <!--
-          Session lifecycle. Exactly one of these is visible: a session is armed
-          explicitly, and it is never armed for you.
-        -->
+        <!-- Session lifecycle buttons -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnStartSession"
             style="@style/Widget.Material3.Button"
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:layout_marginTop="10dp"
-            android:text="START SESSION"
+            android:text="Start session"
             android:textStyle="bold" />
 
         <com.google.android.material.button.MaterialButton
@@ -270,7 +234,7 @@
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:layout_marginTop="10dp"
-            android:text="END SESSION"
+            android:text="End session"
             android:textColor="@color/trace_status_rejected"
             android:visibility="gone"
             app:strokeColor="@color/trace_status_rejected" />
@@ -282,22 +246,15 @@
             android:layout_marginTop="8dp"
             android:weightSum="2">
 
-            <!--
-              The operator's own evidence. TRACE can only infer THAT something
-              happened; only a person can say WHAT it was, so this is the one
-              capture action a human drives. It takes the slot the HUD's Timeline
-              button used to hold: browsing sessions is the app bar's job now, and
-              during an incident the thumb-reachable corner is worth more.
-            -->
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnTagIncident"
+                style="@style/Widget.Material3.Button"
                 android:layout_width="match_parent"
                 android:layout_height="44dp"
-                android:text="TAG INCIDENT"
+                android:text="Tag incident"
                 android:textColor="?attr/colorOnPrimary"
                 android:textStyle="bold"
-                android:textSize="13sp"
-                android:backgroundTint="?attr/colorPrimary" />
+                android:textSize="13sp" />
 
         </LinearLayout>
     </LinearLayout>

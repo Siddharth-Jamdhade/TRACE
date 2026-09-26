@@ -512,26 +512,26 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** "📷 Camera", one per armed sensor, in registry order. */
+    /** "Camera", one per armed sensor, in registry order. */
     private fun sensorPanelText(): String =
         SensorRegistry.ALL
             .filter { it.id in armedSensorIds }
-            .joinToString("\n") { "${it.icon}  ${SensorRegistry.labelFor(it.id)}" }
+            .joinToString("\n") { SensorRegistry.labelFor(it.id) }
             .ifEmpty { "No sensors selected" }
 
     /** Updates the on-screen status bar — this is what judges see on the phone. */
     private fun updateStatusBar(lastEventType: String? = null) {
         val armed = activeSession != null
         val line1 = when {
-            evidenceLocked.get() -> "🔒 EVIDENCE LOCKED — new observations are dropped"
-            !armed -> "TRACE IDLE — no session armed, nothing is being recorded"
-            lastEventType != null -> "LAST EVENT: $lastEventType"
-            else -> "TRACE ACTIVE — capturing from ${armedSensorIds.size} sensor(s)"
+            evidenceLocked.get() -> "Evidence locked — new observations are dropped"
+            !armed -> "TRACE idle — no session armed, nothing is being recorded"
+            lastEventType != null -> "Last event: $lastEventType"
+            else -> "TRACE active — capturing from ${armedSensorIds.size} sensor(s)"
         }
         val line2 = if (armed) {
             "Events recorded: $eventCount   |   TAG marks an incident you saw"
         } else {
-            "Tap START SESSION to arm a recording"
+            "Tap Start session to arm a recording"
         }
         binding.statusText.text = "$line1\n$line2"
     }
@@ -568,9 +568,9 @@ class MainActivity : AppCompatActivity() {
                     // The service produces evidence while this screen may be
                     // paused; while resumed, mirror its live state here.
                     eventCount = LiveBus.eventCount
-                    binding.tvCameraLive.text = "📷 ${"%.0f".format(LiveBus.confCamera * 100)}%"
-                    binding.tvAudioLive.text = "🔊 ${"%.0f".format(LiveBus.confAudio * 100)}%"
-                    binding.tvMotionLive.text = "📳 ${"%.0f".format(LiveBus.confMotion * 100)}%"
+                    binding.tvCameraLive.text = "Camera ${"%.0f".format(LiveBus.confCamera * 100)}%"
+                    binding.tvAudioLive.text = "Audio ${"%.0f".format(LiveBus.confAudio * 100)}%"
+                    binding.tvMotionLive.text = "Motion ${"%.0f".format(LiveBus.confMotion * 100)}%"
                     binding.tvLogCount.text = "$eventCount event(s)"
                     refreshLog()
                 }
@@ -592,7 +592,7 @@ class MainActivity : AppCompatActivity() {
 
         when {
             evidenceLocked.get() -> {
-                chip.text = "🔒 LOCKED"
+                chip.text = "LOCKED"
                 chip.setChipBackgroundColorResource(R.color.trace_error_container)
                 chip.setTextColor(ContextCompat.getColor(this, R.color.trace_on_error_container))
             }
@@ -656,12 +656,11 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 recent.forEach { e ->
                     if (e.source == SensorRegistry.MANUAL.id) {
-                        sessionLog.append(SessionLog.Kind.TAG, "✋ tagged: ${e.type.replace("_", " ")}", e.timestamp)
+                        sessionLog.append(SessionLog.Kind.TAG, "tagged: ${e.type.replace("_", " ")}", e.timestamp)
                     } else {
                         sessionLog.append(
                             SessionLog.Kind.EVENT,
-                            "${SensorRegistry.iconFor(e.source)} ${e.type.replace("_", " ")}" +
-                                " · ${SensorRegistry.labelFor(e.source)}",
+                            "${e.type.replace("_", " ")} · ${SensorRegistry.labelFor(e.source)}",
                             e.timestamp
                         )
                     }
@@ -833,7 +832,7 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 LiveBus.eventCount += 1
                 eventCount = LiveBus.eventCount
-                appendLog(SessionLog.Kind.TAG, "✋ tagged: $title", stored.timestamp)
+                appendLog(SessionLog.Kind.TAG, "tagged: $title", stored.timestamp)
                 updateStatusBar(lastEventType = title)
                 Toast.makeText(this@MainActivity, "Tagged: $title", Toast.LENGTH_SHORT).show()
             }

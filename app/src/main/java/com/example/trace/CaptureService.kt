@@ -482,7 +482,7 @@ class CaptureService : Service(), LifecycleOwner {
             LiveBus.eventCount += 1
             LiveBus.log.append(
                 SessionLog.Kind.EVENT,
-                "${SensorRegistry.iconFor(obs.source)} ${SensorRegistry.labelFor(obs.source)} " +
+                "${SensorRegistry.labelFor(obs.source)} " +
                     "· σ=${"%.1f".format(sigma)} · ${"%.0f".format(obs.confidence * 100)}%",
                 finalEvent.timestamp,
             )

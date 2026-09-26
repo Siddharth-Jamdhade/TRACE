@@ -6,32 +6,35 @@
     android:orientation="vertical"
     android:background="?attr/colorSurface">
 
-    <!--
-      Without this toolbar the theme has no action bar at all, which is why
-      TimelineActivity's options menu (Refresh / Export JSON / Delete All) never
-      appeared anywhere and was unreachable.
-    -->
     <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
         android:background="?attr/colorSurfaceVariant"
-        app:titleTextColor="?attr/colorPrimary"
-        app:navigationIconTint="?attr/colorPrimary" />
+        app:titleTextColor="?attr/colorOnSurface"
+        app:navigationIconTint="?attr/colorOnSurface" />
 
-    <!-- FEATURE C: Locked banner (hidden by default) -->
+    <com.google.android.material.progressindicator.LinearProgressIndicator
+        android:id="@+id/progressBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:indeterminate="true"
+        app:trackThickness="3dp"
+        app:indicatorColor="?attr/colorPrimary" />
+
+    <!-- Evidence locked banner -->
     <TextView
         android:id="@+id/tvLockedBanner"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="🔒 EVIDENCE LOCKED — No new events will be recorded"
-        android:textColor="@color/trace_on_error"
+        android:text="Evidence locked — no new events will be recorded"
+        android:textColor="?attr/colorOnError"
         android:textStyle="bold"
         android:textSize="13sp"
-        android:fontFamily="monospace"
         android:gravity="center"
         android:padding="10dp"
-        android:background="@color/trace_status_rejected"
+        android:background="?attr/colorError"
         android:visibility="gone" />
 
     <!-- Query bar -->
@@ -49,36 +52,35 @@
             android:layout_weight="1"
             android:hint="Ask: what happened before the fall?"
             android:textColor="?attr/colorOnSurface"
-            android:textColorHint="@color/trace_text_hint"
+            android:textColorHint="?attr/colorOnSurfaceVariant"
             android:textSize="13sp"
             android:inputType="text"
             android:imeOptions="actionDone"
             android:singleLine="true"
             android:paddingStart="12dp"
             android:paddingEnd="12dp"
-            android:background="@color/trace_surface_container_high"
+            android:background="?attr/colorSurfaceContainerHigh"
             android:layout_marginEnd="8dp" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnAsk"
+            style="@style/Widget.Material3.Button"
             android:layout_width="wrap_content"
             android:layout_height="44dp"
-            android:text="ASK"
+            android:text="Ask"
             android:textColor="?attr/colorOnPrimary"
             android:textStyle="bold"
-            android:backgroundTint="?attr/colorPrimary"
             android:textSize="12sp" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnAskAi"
+            style="@style/Widget.Material3.Button.TonalButton"
             android:layout_width="wrap_content"
             android:layout_height="44dp"
             android:layout_marginStart="8dp"
-            android:text="ASK AI"
-            android:textColor="?attr/colorPrimary"
+            android:text="Ask AI"
             android:textStyle="bold"
-            android:textSize="12sp"
-            android:backgroundTint="@color/trace_surface_elevated" />
+            android:textSize="12sp" />
 
     </LinearLayout>
 
@@ -89,13 +91,12 @@
         android:layout_height="wrap_content"
         android:padding="12dp"
         android:textColor="?attr/colorOnSurfaceVariant"
-        android:fontFamily="monospace"
         android:textSize="12sp"
         android:lineSpacingExtra="3dp"
         android:background="?attr/colorSurfaceVariant"
         android:visibility="gone" />
 
-    <!-- Section label + Lock button row -->
+    <!-- Section header + Lock button -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -109,24 +110,22 @@
             android:paddingStart="14dp"
             android:paddingTop="10dp"
             android:paddingBottom="6dp"
-            android:text="INCIDENT TIMELINE"
-            android:textColor="?attr/colorPrimary"
-            android:textSize="10sp"
-            android:letterSpacing="0.15"
-            android:fontFamily="monospace" />
+            android:text="Timeline"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="13sp"
+            android:textStyle="bold" />
 
-        <!-- FEATURE C: Lock Evidence Button -->
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnLockEvidence"
+            style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="wrap_content"
             android:layout_height="32dp"
             android:layout_marginEnd="10dp"
             android:layout_marginTop="4dp"
-            android:text="🔒 LOCK"
-            android:textColor="@color/trace_status_rejected"
+            android:text="Lock"
+            android:textColor="?attr/colorError"
             android:textSize="11sp"
             android:textStyle="bold"
-            android:backgroundTint="@color/trace_surface_elevated"
             android:paddingStart="12dp"
             android:paddingEnd="12dp" />
 

@@ -6,14 +6,13 @@
     android:orientation="vertical"
     android:background="?attr/colorSurface">
 
-    <!-- Toolbar sits outside the ScrollView so the back affordance stays put. -->
     <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
         android:background="?attr/colorSurfaceVariant"
-        app:titleTextColor="?attr/colorPrimary"
-        app:navigationIconTint="?attr/colorPrimary" />
+        app:titleTextColor="?attr/colorOnSurface"
+        app:navigationIconTint="?attr/colorOnSurface" />
 
     <ScrollView
         android:layout_width="match_parent"
@@ -26,7 +25,7 @@
         android:orientation="vertical"
         android:padding="16dp">
 
-        <!-- Deviation header -->
+        <!-- Event header card -->
         <LinearLayout
             android:id="@+id/eventHeader"
             android:layout_width="match_parent"
@@ -40,7 +39,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="?attr/colorOnSurface"
-                android:textSize="17sp"
+                android:textSize="18sp"
                 android:textStyle="bold"
                 android:text="Event type" />
 
@@ -50,7 +49,6 @@
                 android:layout_height="wrap_content"
                 android:textColor="?attr/colorOnSurfaceVariant"
                 android:textSize="12sp"
-                android:fontFamily="monospace"
                 android:layout_marginTop="4dp"
                 android:text="Sep 17, 2026  10:45:00" />
 
@@ -58,7 +56,7 @@
                 android:id="@+id/tvSource"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="@color/trace_text_hint"
+                android:textColor="?attr/colorOnSurfaceVariant"
                 android:textSize="11sp"
                 android:layout_marginTop="2dp"
                 android:text="Primary source: motion" />
@@ -69,11 +67,10 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="DEVIATION CONTEXT"
-            android:textColor="?attr/colorPrimary"
-            android:textSize="10sp"
-            android:letterSpacing="0.15"
-            android:fontFamily="monospace"
+            android:text="Deviation context"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="12sp"
+            android:textStyle="bold"
             android:layout_marginTop="20dp"
             android:layout_marginBottom="8dp" />
 
@@ -85,7 +82,6 @@
             android:textColor="?attr/colorOnSurfaceVariant"
             android:textSize="12sp"
             android:lineSpacingExtra="4dp"
-            android:fontFamily="monospace"
             android:background="?attr/colorSurfaceVariant"
             android:text="..." />
 
@@ -93,11 +89,10 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="EVIDENCE CLIP"
-            android:textColor="?attr/colorPrimary"
-            android:textSize="10sp"
-            android:letterSpacing="0.15"
-            android:fontFamily="monospace"
+            android:text="Audio evidence"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="12sp"
+            android:textStyle="bold"
             android:layout_marginTop="20dp"
             android:layout_marginBottom="8dp" />
 
@@ -105,40 +100,38 @@
             android:id="@+id/tvEvidenceStatus"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textColor="@color/trace_text_hint"
+            android:textColor="?attr/colorOnSurfaceVariant"
             android:textSize="12sp"
             android:text="No evidence clip saved." />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnPlayEvidence"
+            style="@style/Widget.Material3.Button"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="PLAY EVIDENCE CLIP"
-            android:textColor="?attr/colorOnPrimary"
+            android:text="Play evidence clip"
             android:textStyle="bold"
-            android:backgroundTint="?attr/colorPrimary"
             android:visibility="gone" />
 
-        <!-- Camera snapshot: decoded downsampled for review, never the raw file -->
+        <!-- Camera snapshot -->
         <TextView
             android:id="@+id/tvPhotoStatus"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:textColor="@color/trace_text_hint"
+            android:textColor="?attr/colorOnSurfaceVariant"
             android:textSize="12sp"
             android:text="No camera snapshot saved." />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnViewPhoto"
+            style="@style/Widget.Material3.Button"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="VIEW SNAPSHOT"
-            android:textColor="?attr/colorOnPrimary"
+            android:text="View snapshot"
             android:textStyle="bold"
-            android:backgroundTint="?attr/colorPrimary"
             android:visibility="gone" />
 
         <ImageView
@@ -154,11 +147,10 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="TAMPER EVIDENCE"
-            android:textColor="?attr/colorPrimary"
-            android:textSize="10sp"
-            android:letterSpacing="0.15"
-            android:fontFamily="monospace"
+            android:text="Tamper evidence"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="12sp"
+            android:textStyle="bold"
             android:layout_marginTop="20dp"
             android:layout_marginBottom="8dp" />
 
@@ -174,9 +166,8 @@
             android:id="@+id/tvHashValue"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textColor="@color/trace_text_hint"
+            android:textColor="?attr/colorOnSurfaceVariant"
             android:textSize="11sp"
-            android:fontFamily="monospace"
             android:layout_marginTop="4dp"
             android:layout_marginBottom="16dp"
             android:text="" />

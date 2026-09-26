@@ -33,7 +33,6 @@
             android:layout_marginTop="2dp"
             android:textColor="?attr/colorOnSurfaceVariant"
             android:textSize="12sp"
-            android:fontFamily="monospace"
             android:maxLines="2" />
 
     </LinearLayout>
@@ -49,7 +48,6 @@
         android:paddingBottom="3dp"
         android:textSize="10sp"
         android:textStyle="bold"
-        android:fontFamily="monospace"
-        android:letterSpacing="0.08" />
+        android:letterSpacing="0.04" />
 
 </LinearLayout>

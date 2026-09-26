@@ -31,8 +31,6 @@ class EventAdapter(
         RecyclerView.ViewHolder(binding.root) {
 
         fun bind(event: Event) {
-            // Source icon (full mapping lives in SensorRegistry)
-            binding.tvIcon.text = SensorRegistry.iconFor(event.source)
             binding.tvEventType.text = event.type.replace("_", " ")
                 .replaceFirstChar { it.uppercase() }
             binding.tvTimestamp.text = TimestampDisplay.formatTime(event.timestamp)

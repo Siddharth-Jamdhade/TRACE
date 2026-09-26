@@ -11,8 +11,8 @@
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
         android:background="?attr/colorSurfaceVariant"
-        app:titleTextColor="?attr/colorPrimary"
-        app:navigationIconTint="?attr/colorPrimary" />
+        app:titleTextColor="?attr/colorOnSurface"
+        app:navigationIconTint="?attr/colorOnSurface" />
 
     <ScrollView
         android:layout_width="match_parent"
@@ -28,11 +28,10 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="PROVIDER"
-                android:textColor="?attr/colorPrimary"
-                android:textSize="10sp"
-                android:letterSpacing="0.15"
-                android:fontFamily="monospace"
+                android:text="Provider"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="12sp"
+                android:textStyle="bold"
                 android:paddingBottom="8dp" />
 
             <RadioGroup
@@ -76,21 +75,20 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
+                android:layout_marginTop="8dp"
                 android:textColor="?attr/colorOnSurfaceVariant"
                 android:textSize="12sp"
-                android:lineSpacingExtra="3dp"
-                android:text="All three are cloud services. Your session data (event log, times, labels, statuses — no audio, no photos) is sent to the provider you pick, using the key below. The key is stored encrypted on this device and is used only for these requests." />
+                android:lineSpacingExtra="2dp"
+                android:text="Your session data (event log, times, labels, statuses — no audio or photos) is sent to the selected provider. The API key is encrypted on-device." />
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
-                android:text="API KEY"
-                android:textColor="?attr/colorPrimary"
-                android:textSize="10sp"
-                android:letterSpacing="0.15"
-                android:fontFamily="monospace"
+                android:text="API key"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="12sp"
+                android:textStyle="bold"
                 android:paddingBottom="8dp" />
 
             <com.google.android.material.textfield.TextInputLayout
@@ -113,11 +111,10 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
-                android:text="MODEL"
-                android:textColor="?attr/colorPrimary"
-                android:textSize="10sp"
-                android:letterSpacing="0.15"
-                android:fontFamily="monospace"
+                android:text="Model"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="12sp"
+                android:textStyle="bold"
                 android:paddingBottom="8dp" />
 
             <com.google.android.material.textfield.TextInputLayout
@@ -139,10 +136,10 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
+                android:layout_marginTop="4dp"
                 android:textColor="?attr/colorOnSurfaceVariant"
                 android:textSize="12sp"
-                android:text="Type the model name exactly as the provider expects it (this is their identifier, not ours)." />
+                android:text="Type the model name exactly as the provider expects it." />
 
             <TextView
                 android:id="@+id/tvStatus"
@@ -150,27 +147,25 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="14dp"
                 android:textColor="?attr/colorOnSurfaceVariant"
-                android:textSize="12sp"
-                android:fontFamily="monospace" />
+                android:textSize="12sp" />
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnSave"
+                style="@style/Widget.Material3.Button"
                 android:layout_width="match_parent"
                 android:layout_height="48dp"
                 android:layout_marginTop="16dp"
-                android:text="SAVE"
-                android:textColor="?attr/colorOnPrimary"
-                android:textStyle="bold"
-                android:backgroundTint="?attr/colorPrimary" />
+                android:text="Save"
+                android:textStyle="bold" />
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnClear"
+                style="@style/Widget.Material3.Button.TextButton"
                 android:layout_width="match_parent"
                 android:layout_height="48dp"
                 android:layout_marginTop="8dp"
-                android:text="CLEAR SAVED CONFIG"
-                android:textColor="@color/trace_status_rejected"
-                android:backgroundTint="@color/trace_surface_elevated" />
+                android:text="Clear saved config"
+                android:textColor="?attr/colorError" />
 
         </LinearLayout>
 

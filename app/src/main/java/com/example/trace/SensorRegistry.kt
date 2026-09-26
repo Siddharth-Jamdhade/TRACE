@@ -7,7 +7,6 @@ package com.example.trace
  * observation pipeline. Each entry pairs the string source ID used by
  * [Observation]/[Event] with:
  *   - the Android.hardware.Sensor type constant it is read from
- *   - a display icon
  *   - a description of what physical phenomenon it measures
  *
  * Sensors that can NOT contribute meaningful signal to physical incident
@@ -24,29 +23,28 @@ object SensorRegistry {
     data class SensorSpec(
         val id: String,
         val type: Int,
-        val icon: String,
         val role: String
     )
 
-    val CAMERA = SensorSpec("camera", -1, "📷",
+    val CAMERA = SensorSpec("camera", -1,
         "Frame differencing — detects visual changes between frames")
-    val AUDIO = SensorSpec("audio", -1, "🔊",
+    val AUDIO = SensorSpec("audio", -1,
         "Amplitude envelope — detects loud or unusual sounds")
-    val MOTION = SensorSpec("motion", android.hardware.Sensor.TYPE_ACCELEROMETER, "📳",
+    val MOTION = SensorSpec("motion", android.hardware.Sensor.TYPE_ACCELEROMETER,
         "Jerk analysis — detects bumps, shakes, and movement")
-    val MAGNETOMETER = SensorSpec("magnetometer", android.hardware.Sensor.TYPE_MAGNETIC_FIELD, "🧲",
+    val MAGNETOMETER = SensorSpec("magnetometer", android.hardware.Sensor.TYPE_MAGNETIC_FIELD,
         "Ambient magnetic field — detects ferrous objects or field distortion")
-    val BAROMETER = SensorSpec("barometer", android.hardware.Sensor.TYPE_PRESSURE, "🌀",
+    val BAROMETER = SensorSpec("barometer", android.hardware.Sensor.TYPE_PRESSURE,
         "Air pressure — detects sudden pressure transients from openings")
-    val LIGHT = SensorSpec("light", android.hardware.Sensor.TYPE_LIGHT, "💡",
+    val LIGHT = SensorSpec("light", android.hardware.Sensor.TYPE_LIGHT,
         "Illumination level — detects sudden brightness changes")
-    val LINEAR = SensorSpec("linear", android.hardware.Sensor.TYPE_LINEAR_ACCELERATION, "🪂",
+    val LINEAR = SensorSpec("linear", android.hardware.Sensor.TYPE_LINEAR_ACCELERATION,
         "Gravity-free acceleration — detects free-fall and linear motion")
-    val GYROSCOPE = SensorSpec("gyroscope", android.hardware.Sensor.TYPE_GYROSCOPE, "🔄",
+    val GYROSCOPE = SensorSpec("gyroscope", android.hardware.Sensor.TYPE_GYROSCOPE,
         "Angular velocity — detects rotation and spin")
-    val STEP = SensorSpec("step", android.hardware.Sensor.TYPE_STEP_DETECTOR, "👣",
+    val STEP = SensorSpec("step", android.hardware.Sensor.TYPE_STEP_DETECTOR,
         "Footstep detection — detects nearby footsteps")
-    val SIGMOTION = SensorSpec("sigmotion", android.hardware.Sensor.TYPE_SIGNIFICANT_MOTION, "🚶",
+    val SIGMOTION = SensorSpec("sigmotion", android.hardware.Sensor.TYPE_SIGNIFICANT_MOTION,
         "Hardware motion trigger — detects large movements with low power")
 
     /** All sensors that feed Observations into the pipeline. */
@@ -66,7 +64,7 @@ object SensorRegistry {
      * A tag has no `Sensor.TYPE_*` to read, hence the -1 placeholder shared with
      * the other software sources.
      */
-    val MANUAL = SensorSpec("manual", -1, "✋",
+    val MANUAL = SensorSpec("manual", -1,
         "Operator assertion — an incident a human on scene reported directly")
 
     /** Sources that are NOT physical sensors (human input only). */
@@ -85,8 +83,6 @@ object SensorRegistry {
     fun sensorSetOf(ids: Collection<String>): String =
         ALL.map { it.id }.filter { it in ids }.joinToString("|")
 
-    fun iconFor(source: String): String = byId(source)?.icon ?: "❓"
-
     fun labelFor(source: String): String =
         source.replaceFirstChar { it.uppercase() }
 
@@ -97,6 +93,6 @@ object SensorRegistry {
     fun availabilityReport(sensorManager: android.hardware.SensorManager): String =
         ALL.filter { it.type > 0 }.joinToString("\n") { spec ->
             val present = sensorManager.getDefaultSensor(spec.type) != null
-            "${spec.icon} ${spec.id}: ${if (present) "AVAILABLE" else "not present on device"}"
+            "${labelFor(spec.id)}: ${if (present) "AVAILABLE" else "not present on device"}"
         }
 }

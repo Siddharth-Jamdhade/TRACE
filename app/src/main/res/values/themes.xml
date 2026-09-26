@@ -1,51 +1,107 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!--
-      TRACE — Material 3 theme.
+      TRACE — Material 3 theme with light + dark support.
 
-      Dark-only on purpose: every screen paints dark surfaces and the camera
-      viewfinder is black, so a light variant would need a full pass over five
-      layouts before it could honestly be offered.
+      Uses Theme.Material3.DayNight.NoActionBar so the system switches
+      automatically between the light and dark colour schemes based on
+      the device's theme setting.
 
-      On Android 12+ TraceApplication overlays Material You (the user's wallpaper
-      palette) through DynamicColors. The TRACE palette mapped here is what
-      Android 11 and below sees, and what you get when the wallpaper palette is
-      pinned off.
+      On Android 12+ TraceApplication overlays Material You (the user's
+      wallpaper palette) through DynamicColors. The values mapped here
+      are what Android 11 and below see, and what you get when wallpaper
+      palette is pinned off.
     -->
-    <style name="Theme.TRACE" parent="Theme.Material3.Dark.NoActionBar">
+    <style name="Theme.TRACE" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Light scheme -->
+        <item name="colorPrimary">@color/light_primary</item>
+        <item name="colorOnPrimary">@color/light_on_primary</item>
+        <item name="colorPrimaryContainer">@color/light_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/light_on_primary_container</item>
+        <item name="colorSecondary">@color/light_secondary</item>
+        <item name="colorOnSecondary">@color/light_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/light_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/light_on_secondary_container</item>
+        <item name="colorTertiary">@color/light_tertiary</item>
+        <item name="colorOnTertiary">@color/light_on_tertiary</item>
+        <item name="colorTertiaryContainer">@color/light_tertiary_container</item>
+        <item name="colorOnTertiaryContainer">@color/light_on_tertiary_container</item>
+        <item name="colorError">@color/light_error</item>
+        <item name="colorOnError">@color/light_on_error</item>
+        <item name="colorErrorContainer">@color/light_error_container</item>
+        <item name="colorOnErrorContainer">@color/light_on_error_container</item>
+        <item name="colorSurface">@color/light_surface</item>
+        <item name="colorOnSurface">@color/light_on_surface</item>
+        <item name="colorSurfaceVariant">@color/light_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/light_on_surface_variant</item>
+        <item name="colorSurfaceInverse">@color/light_inverse_surface</item>
+        <item name="colorOnSurfaceInverse">@color/light_inverse_on_surface</item>
+        <item name="colorPrimaryInverse">@color/light_inverse_primary</item>
+        <item name="colorOutline">@color/light_outline</item>
+        <item name="colorOutlineVariant">@color/light_outline_variant</item>
+        <item name="android:colorBackground">@color/light_surface</item>
+        <item name="android:windowBackground">@color/light_surface</item>
+        <item name="android:statusBarColor">@color/light_surface_container</item>
+        <item name="android:navigationBarColor">@color/light_surface_container</item>
+    </style>
 
-        <!-- Brand -->
-        <item name="colorPrimary">@color/trace_primary</item>
-        <item name="colorOnPrimary">@color/trace_on_primary</item>
-        <item name="colorPrimaryContainer">@color/trace_primary_container</item>
-        <item name="colorOnPrimaryContainer">@color/trace_on_primary_container</item>
-        <item name="colorSecondary">@color/trace_secondary</item>
-        <item name="colorOnSecondary">@color/trace_on_secondary</item>
-        <item name="colorSecondaryContainer">@color/trace_secondary_container</item>
-        <item name="colorOnSecondaryContainer">@color/trace_on_secondary_container</item>
-        <item name="colorTertiary">@color/trace_tertiary</item>
-        <item name="colorOnTertiary">@color/trace_on_tertiary</item>
-        <item name="colorTertiaryContainer">@color/trace_tertiary_container</item>
-        <item name="colorOnTertiaryContainer">@color/trace_on_tertiary_container</item>
-        <item name="colorError">@color/trace_error</item>
-        <item name="colorOnError">@color/trace_on_error</item>
-        <item name="colorErrorContainer">@color/trace_error_container</item>
-        <item name="colorOnErrorContainer">@color/trace_on_error_container</item>
+    <!-- Dark theme overlay — applied automatically by DayNight -->
+    <style name="Theme.TRACE.Dark" parent="Theme.TRACE">
+        <item name="colorPrimary">@color/dark_primary</item>
+        <item name="colorOnPrimary">@color/dark_on_primary</item>
+        <item name="colorPrimaryContainer">@color/dark_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/dark_on_primary_container</item>
+        <item name="colorSecondary">@color/dark_secondary</item>
+        <item name="colorOnSecondary">@color/dark_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/dark_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/dark_on_secondary_container</item>
+        <item name="colorTertiary">@color/dark_tertiary</item>
+        <item name="colorOnTertiary">@color/dark_on_tertiary</item>
+        <item name="colorTertiaryContainer">@color/dark_tertiary_container</item>
+        <item name="colorOnTertiaryContainer">@color/dark_on_tertiary_container</item>
+        <item name="colorError">@color/dark_error</item>
+        <item name="colorOnError">@color/dark_on_error</item>
+        <item name="colorErrorContainer">@color/dark_error_container</item>
+        <item name="colorOnErrorContainer">@color/dark_on_error_container</item>
+        <item name="colorSurface">@color/dark_surface</item>
+        <item name="colorOnSurface">@color/dark_on_surface</item>
+        <item name="colorSurfaceVariant">@color/dark_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/dark_on_surface_variant</item>
+        <item name="colorSurfaceInverse">@color/dark_inverse_surface</item>
+        <item name="colorOnSurfaceInverse">@color/dark_inverse_on_surface</item>
+        <item name="colorPrimaryInverse">@color/dark_inverse_primary</item>
+        <item name="colorOutline">@color/dark_outline</item>
+        <item name="colorOutlineVariant">@color/dark_outline_variant</item>
+        <item name="android:colorBackground">@color/dark_surface</item>
+        <item name="android:windowBackground">@color/dark_surface</item>
+        <item name="android:statusBarColor">@color/dark_surface_container</item>
+        <item name="android:navigationBarColor">@color/dark_surface_container</item>
+    </style>
 
-        <!-- Surfaces and text -->
-        <item name="colorSurface">@color/trace_surface</item>
-        <item name="colorOnSurface">@color/trace_on_surface</item>
-        <item name="colorSurfaceVariant">@color/trace_surface_variant</item>
-        <item name="colorOnSurfaceVariant">@color/trace_on_surface_variant</item>
-        <item name="colorSurfaceInverse">@color/trace_inverse_surface</item>
-        <item name="colorOnSurfaceInverse">@color/trace_inverse_on_surface</item>
-        <item name="colorPrimaryInverse">@color/trace_inverse_primary</item>
-        <item name="colorOutline">@color/trace_outline</item>
-        <item name="colorOutlineVariant">@color/trace_outline_variant</item>
-        <item name="colorOnBackground">@color/trace_on_surface</item>
-        <item name="android:colorBackground">@color/trace_surface</item>
-        <item name="android:windowBackground">@color/trace_surface</item>
-        <item name="android:statusBarColor">@color/trace_surface</item>
-        <item name="android:navigationBarColor">@color/trace_surface</item>
+    <!--
+      Force-dark variant: used for the camera dashboard where black backdrop
+      and semi-transparent overlays must stay dark regardless of theme.
+    -->
+    <style name="Theme.TRACE.Camera" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/dark_primary</item>
+        <item name="colorOnPrimary">@color/dark_on_primary</item>
+        <item name="colorPrimaryContainer">@color/dark_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/dark_on_primary_container</item>
+        <item name="colorSecondary">@color/dark_secondary</item>
+        <item name="colorOnSecondary">@color/dark_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/dark_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/dark_on_secondary_container</item>
+        <item name="colorError">@color/dark_error</item>
+        <item name="colorOnError">@color/dark_on_error</item>
+        <item name="colorSurface">@color/dark_surface</item>
+        <item name="colorOnSurface">@color/dark_on_surface</item>
+        <item name="colorSurfaceVariant">@color/dark_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/dark_on_surface_variant</item>
+        <item name="colorOutline">@color/dark_outline</item>
+        <item name="colorOutlineVariant">@color/dark_outline_variant</item>
+        <item name="android:colorBackground">@color/dark_surface</item>
+        <item name="android:windowBackground">@color/dark_surface</item>
+        <item name="android:statusBarColor">@color/dark_surface_container</item>
+        <item name="android:navigationBarColor">@color/dark_surface_container</item>
     </style>
 </resources>

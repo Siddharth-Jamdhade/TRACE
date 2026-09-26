@@ -11,11 +11,10 @@
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
         android:background="?attr/colorSurfaceVariant"
-        app:titleTextColor="?attr/colorPrimary"
-        app:navigationIconTint="?attr/colorPrimary" />
+        app:titleTextColor="?attr/colorOnSurface"
+        app:navigationIconTint="?attr/colorOnSurface" />
 
-    <!-- Which session this chat is grounded in. Honest labelling: the answer
-         is only as complete as this session's log. -->
+    <!-- Session scope label -->
     <TextView
         android:id="@+id/tvSessionScope"
         android:layout_width="match_parent"
@@ -24,8 +23,7 @@
         android:paddingEnd="16dp"
         android:paddingBottom="8dp"
         android:textColor="?attr/colorOnSurfaceVariant"
-        android:textSize="11sp"
-        android:fontFamily="monospace" />
+        android:textSize="11sp" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/chatRecycler"
@@ -43,9 +41,8 @@
         android:paddingEnd="16dp"
         android:paddingTop="4dp"
         android:paddingBottom="4dp"
-        android:textColor="@color/trace_text_hint"
+        android:textColor="?attr/colorOnSurfaceVariant"
         android:textSize="11sp"
-        android:fontFamily="monospace"
         android:visibility="gone" />
 
     <LinearLayout
@@ -64,25 +61,25 @@
             android:layout_marginEnd="8dp"
             android:hint="Ask about this session"
             android:textColor="?attr/colorOnSurface"
-            android:textColorHint="@color/trace_text_hint"
+            android:textColorHint="?attr/colorOnSurfaceVariant"
             android:textSize="14sp"
             android:inputType="textCapSentences|textMultiLine"
             android:maxLines="4"
-            android:background="@color/trace_surface_container_high"
+            android:background="?attr/colorSurfaceContainerHigh"
             android:paddingStart="12dp"
             android:paddingEnd="12dp"
             android:paddingTop="10dp"
             android:paddingBottom="10dp" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnSend"
+            style="@style/Widget.Material3.Button"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="SEND"
+            android:text="Send"
             android:textColor="?attr/colorOnPrimary"
             android:textStyle="bold"
-            android:textSize="12sp"
-            android:backgroundTint="?attr/colorPrimary" />
+            android:textSize="12sp" />
 
     </LinearLayout>
 

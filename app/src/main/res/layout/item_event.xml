@@ -10,7 +10,7 @@
     android:layout_marginBottom="4dp"
     app:cardBackgroundColor="?attr/colorSurfaceVariant"
     app:cardCornerRadius="10dp"
-    app:cardElevation="4dp"
+    app:cardElevation="0dp"
     app:strokeColor="?attr/colorOutlineVariant"
     app:strokeWidth="1dp">
 
@@ -41,7 +41,7 @@
                     android:layout_height="wrap_content"
                     android:textSize="18sp"
                     android:layout_marginEnd="6dp"
-                    android:text="?" />
+                    android:visibility="gone" />
 
                 <TextView
                     android:id="@+id/tvEventType"
@@ -57,9 +57,8 @@
                 android:id="@+id/tvTimestamp"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="@color/trace_text_hint"
+                android:textColor="?attr/colorOnSurfaceVariant"
                 android:textSize="11sp"
-                android:fontFamily="monospace"
                 android:layout_marginTop="2dp"
                 android:text="00:00:00" />
 

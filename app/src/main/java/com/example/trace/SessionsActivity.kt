@@ -78,13 +78,15 @@ class SessionsActivity : AppCompatActivity() {
     }
 
     private fun loadSessions() {
+        binding.progressBar.visibility = View.VISIBLE
         scope.launch {
             val sessions = database.sessionDao().getAllSessions()
             withContext(Dispatchers.Main) {
                 adapter.submit(sessions)
                 val empty = sessions.isEmpty()
-                binding.tvEmpty.visibility = if (empty) View.VISIBLE else View.GONE
+                binding.emptyState.visibility = if (empty) View.VISIBLE else View.GONE
                 binding.recyclerSessions.visibility = if (empty) View.GONE else View.VISIBLE
+                binding.progressBar.visibility = View.GONE
             }
         }
     }

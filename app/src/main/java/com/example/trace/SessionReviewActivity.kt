@@ -96,6 +96,7 @@ class SessionReviewActivity : AppCompatActivity() {
     }
 
     private fun loadSession() {
+        binding.progressBar.visibility = View.VISIBLE
         scope.launch {
             val s = database.sessionDao().getSessionById(sessionId)
             if (s == null) {
@@ -108,6 +109,7 @@ class SessionReviewActivity : AppCompatActivity() {
             val headerValid = s.legacy || s.sessionHash == HashChain.computeSessionHash(s)
 
             withContext(Dispatchers.Main) {
+                binding.progressBar.visibility = View.GONE
                 session = s
                 loadedEvents = events
                 render(s, events, chainValid && headerValid)

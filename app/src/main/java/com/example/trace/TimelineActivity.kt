@@ -54,7 +54,7 @@ class TimelineActivity : AppCompatActivity() {
         // arrow and the options menu below would never be shown — which is why
         // Export JSON and Delete All were previously unreachable.
         setSupportActionBar(binding.toolbar)
-        supportActionBar?.title = "TRACE -- Incident Timeline"
+        supportActionBar?.title = "TRACE — Timeline"
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
         database = TraceDatabase.getInstance(this)
@@ -85,18 +85,18 @@ class TimelineActivity : AppCompatActivity() {
         if (alreadyLocked) {
             binding.tvLockedBanner.visibility = View.VISIBLE
             binding.btnLockEvidence.isEnabled = false
-            binding.btnLockEvidence.text = "🔒 LOCKED"
+            binding.btnLockEvidence.text = "LOCKED"
         }
 
         binding.btnLockEvidence.setOnClickListener {
             androidx.appcompat.app.AlertDialog.Builder(this)
-                .setTitle("🔒 Lock Evidence?")
+                .setTitle("Lock Evidence?")
                 .setMessage("This will permanently stop recording new events. The current timeline will be sealed and cannot be modified.\n\nProceed?")
                 .setPositiveButton("LOCK IT") { _, _ ->
                     EvidenceLock.setLocked(this@TimelineActivity, true)
                     binding.tvLockedBanner.visibility = View.VISIBLE
                     binding.btnLockEvidence.isEnabled = false
-                    binding.btnLockEvidence.text = "🔒 LOCKED"
+                    binding.btnLockEvidence.text = "LOCKED"
                     Toast.makeText(this, "Evidence chain locked. No new events will be recorded.", Toast.LENGTH_LONG).show()
                 }
                 .setNegativeButton("Cancel", null)
@@ -109,15 +109,16 @@ class TimelineActivity : AppCompatActivity() {
     // ------ Data --------------------------------------------------------
 
     private fun loadEvents() {
+        binding.progressBar.visibility = View.VISIBLE
         scope.launch {
             val events = database.eventDao().getAllEvents()
             withContext(Dispatchers.Main) {
                 adapter.submitList(events.sortedByDescending { it.timestamp })
                 if (events.isEmpty()) {
-                    binding.queryAnswer.text =
-                        "No events yet.\nTrigger a physical incident on the main screen\nto build the timeline."
+                    binding.queryAnswer.text = "No events yet — trigger a sensor or tag an incident from the dashboard."
                     binding.queryAnswer.visibility = View.VISIBLE
                 }
+                binding.progressBar.visibility = View.GONE
             }
         }
     }

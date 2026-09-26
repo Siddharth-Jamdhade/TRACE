@@ -2,9 +2,10 @@
 <!--
   One line of the live session log tail.
 
-  A single TextView keeps the tail compact — time and text share the line, and
-  the colour is set in code from the entry's kind (same fixed semantic palette
-  the timeline uses, so a green line means CONFIRMED here too).
+  A single compact TextView — time and data share the line. Monospace is kept for
+  this view because log lines mix timestamps and numeric sensor readings where
+  column alignment matters for quick scanning. Colour is set in code from the
+  entry's kind (same fixed semantic palette the timeline uses).
 -->
 <TextView xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/tvLogLine"
@@ -15,4 +16,4 @@
     android:lineSpacingExtra="2dp"
     android:paddingTop="1dp"
     android:paddingBottom="1dp"
-    android:textColor="@color/trace_on_surface_variant" />
+    android:textColor="?attr/colorOnSurfaceVariant" />

@@ -352,6 +352,39 @@ class ChatAdapter : RecyclerView.Adapter<ChatAdapter.VH>() {
         fun bind(text: String, isUser: Boolean) {
             binding.tvBubble.text = text
             binding.tvBubble.gravity = if (isUser) android.view.Gravity.END else android.view.Gravity.START
+
+            val layoutParams = binding.tvBubble.layoutParams as android.widget.FrameLayout.LayoutParams
+            layoutParams.gravity = if (isUser) android.view.Gravity.END else android.view.Gravity.START
+            binding.tvBubble.layoutParams = layoutParams
+
+            val ctx = binding.root.context
+            val bgRes = if (isUser) R.drawable.bubble_sender else R.drawable.bubble_receiver
+            val bgColor = if (isUser) {
+                com.google.android.material.color.MaterialColors.getColor(
+                    binding.tvBubble,
+                    com.google.android.material.R.attr.colorPrimaryContainer
+                )
+            } else {
+                com.google.android.material.color.MaterialColors.getColor(
+                    binding.tvBubble,
+                    com.google.android.material.R.attr.colorSurfaceVariant
+                )
+            }
+            val textColor = if (isUser) {
+                com.google.android.material.color.MaterialColors.getColor(
+                    binding.tvBubble,
+                    com.google.android.material.R.attr.colorOnPrimaryContainer
+                )
+            } else {
+                com.google.android.material.color.MaterialColors.getColor(
+                    binding.tvBubble,
+                    com.google.android.material.R.attr.colorOnSurfaceVariant
+                )
+            }
+            binding.tvBubble.setTextColor(textColor)
+            val bg = androidx.core.content.ContextCompat.getDrawable(ctx, bgRes)?.mutate()
+            bg?.let { androidx.core.graphics.drawable.DrawableCompat.setTint(it, bgColor) }
+            binding.tvBubble.background = bg
         }
     }
 }

@@ -135,7 +135,7 @@ class ArmingSheet : BottomSheetDialogFragment() {
             // `Chip` with isCheckable rather than `FilterChip`: FilterChip is absent
             // from the Material artifact this project resolves.
             val chip = Chip(requireContext()).apply {
-                text = "${spec.icon}  ${SensorRegistry.labelFor(spec.id)}"
+                text = SensorRegistry.labelFor(spec.id)
                 isChecked = true
                 isCheckable = true
                 tag = spec.id

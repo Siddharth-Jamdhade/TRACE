@@ -28,7 +28,6 @@ class SensorLogAdapter : ListAdapter<SensorLog, SensorLogAdapter.LogViewHolder>(
         RecyclerView.ViewHolder(binding.root) {
 
         fun bind(log: SensorLog) {
-            binding.tvIcon.text = SensorRegistry.iconFor(log.source)
             binding.tvSource.text = SensorRegistry.labelFor(log.source)
             binding.tvTimestamp.text = TimestampDisplay.formatTime(log.timestamp)
             binding.tvValue.text = "%.4f".format(log.value)

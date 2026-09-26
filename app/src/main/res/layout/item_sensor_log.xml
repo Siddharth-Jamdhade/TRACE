@@ -10,7 +10,7 @@
     android:layout_marginBottom="2dp"
     app:cardBackgroundColor="?attr/colorSurfaceVariant"
     app:cardCornerRadius="6dp"
-    app:cardElevation="1dp"
+    app:cardElevation="0dp"
     app:strokeColor="?attr/colorOutlineVariant"
     app:strokeWidth="0.5dp">
 
@@ -28,7 +28,7 @@
             android:layout_height="wrap_content"
             android:textSize="14sp"
             android:layout_marginEnd="8dp"
-            android:text="?" />
+            android:visibility="gone" />
 
         <!-- Source + timestamp -->
         <LinearLayout
@@ -56,9 +56,8 @@
                     android:id="@+id/tvTimestamp"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:textColor="@color/trace_text_hint"
+                    android:textColor="?attr/colorOnSurfaceVariant"
                     android:textSize="10sp"
-                    android:fontFamily="monospace"
                     android:layout_marginStart="8dp"
                     android:text="00:00:00" />
 
@@ -66,7 +65,7 @@
 
         </LinearLayout>
 
-        <!-- Numeric value -->
+        <!-- Numeric value — monospace kept for aligned sensor readings -->
         <TextView
             android:id="@+id/tvValue"
             android:layout_width="wrap_content"
