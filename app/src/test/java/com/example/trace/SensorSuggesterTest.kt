@@ -84,7 +84,7 @@ class SensorSuggesterTest {
             )
             assertFalse(
                 "software sources must never be offered as capture sensors",
-                ids.any { it == SensorRegistry.MANUAL.id || it == SensorRegistry.VIDEO.id }
+                ids.any { it == SensorRegistry.MANUAL.id }
             )
         }
     }

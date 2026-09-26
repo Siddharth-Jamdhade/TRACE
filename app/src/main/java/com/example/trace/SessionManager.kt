@@ -20,9 +20,6 @@ import kotlinx.coroutines.sync.withLock
  */
 object SessionManager {
 
-    /** Description used for sessions created to hold imported video analysis. */
-    const val IMPORT_SESSION_NAME = "Imported footage"
-
     /** The session this process is currently recording into, if any. */
     @Volatile
     var activeSessionId: Long? = null
@@ -153,16 +150,6 @@ object SessionManager {
         }
         return recovered
     }
-
-    /**
-     * Session for evidence imported from outside a live recording.
-     *
-     * Imported footage gets its own session, keeping provenance obvious (its
-     * events carry [SensorRegistry.VIDEO] as their source) and keeping its chain
-     * independent of whatever is being recorded live.
-     */
-    suspend fun createImportSession(sessionDao: SessionDao): Session =
-        createSession(sessionDao, natureOfWork = IMPORT_SESSION_NAME, sensorSet = "")
 
     /** Computes the closed form of [session] — writes nothing. */
     private suspend fun closeOut(eventDao: EventDao, session: Session, state: String): Session =

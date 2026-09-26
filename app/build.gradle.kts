@@ -62,11 +62,7 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.3.4")
     implementation("androidx.camera:camera-view:1.3.4")
 
-    // ML Kit — on-device image labeling for video import (offline, no internet).
-    // (The object-detection artifact was removed: nothing in the codebase called
-    // it, and it shipped its bundled model to every APK for nothing.)
-    implementation("com.google.mlkit:image-labeling:17.0.9")
-
+    
     // Room database
     implementation("androidx.room:room-runtime:2.7.1")
     ksp("androidx.room:room-compiler:2.7.1")

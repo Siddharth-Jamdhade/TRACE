@@ -48,7 +48,7 @@ data class Event(
     val sensorBreakdown: String? = null,
 
     // --- Evidence files (filled after capture) -----------------------
-    /** Absolute path to the saved amr audio clip, or null if not available. */
+    /** Absolute path to the saved audio clip, or null if not available. */
     val evidenceClipPath: String? = null,
 
     /**

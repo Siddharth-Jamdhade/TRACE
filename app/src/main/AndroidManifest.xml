@@ -3,10 +3,6 @@
 
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <!-- READ_MEDIA_VIDEO is required on Android 13+ to pick videos from the gallery -->
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <!-- Fallback for Android 12 and below -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <!-- POST_NOTIFICATIONS required on Android 13+ for CONFIRMED event alerts -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- TYPE_STEP_DETECTOR / TYPE_SIGNIFICANT_MOTION require this on API 29+ -->
@@ -79,11 +75,6 @@
             android:name=".ChatActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
-
-        <!-- Video import: pick videos + ML Kit analysis -->
-        <activity
-            android:name=".VideoImportActivity"
-            android:exported="false" />
 
         <!--
             FileProvider — lets us share the exported events.json file

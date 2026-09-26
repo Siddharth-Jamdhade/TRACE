@@ -88,7 +88,7 @@ object FusionEngine {
         // evidence is lost in the reconstruction view. Human tags are filtered
         // out: this line is the sensor picture, and a tag is not a sensor.
         val breakdown = allEvidence
-            .filterNot { it.source in setOf("camera", "audio", "motion", "video") || isHumanAsserted(it) }
+            .filterNot { it.source in setOf("camera", "audio", "motion") || isHumanAsserted(it) }
             .groupBy { it.source }
             .map { (source, events) -> "$source:${"%.2f".format(events.maxOf { it.confidence })}" }
             .filter { it.substringAfter(':') != "0.00" || it.substringBefore(':') == baseEvent.source }

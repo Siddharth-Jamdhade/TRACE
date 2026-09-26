@@ -107,7 +107,7 @@ class MainActivity : AppCompatActivity() {
     private val PERMISSION_REQUEST_CODE = 100
 
     // ── Evidence Lock ─────────────────────────────────────────────────────
-    // Shared with TimelineActivity + VideoImportActivity via [EvidenceLock].
+    // Shared with TimelineActivity via [EvidenceLock].
     private val evidenceLocked = AtomicBoolean(false)
 
     // Running event count shown live on screen (mirrored from [LiveBus])
@@ -282,10 +282,6 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnTagIncident.setOnClickListener {
             showTagDialog()
-        }
-
-        binding.btnAnalyseVideo.setOnClickListener {
-            startActivity(Intent(this, VideoImportActivity::class.java))
         }
 
         binding.btnStartSession.setOnClickListener { showArmingSheet() }

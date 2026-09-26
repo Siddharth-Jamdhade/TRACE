@@ -83,8 +83,8 @@ object HashChain {
      *   3. every following event links to the event appended before it.
      *
      * Ordering is by [Event.id] (append order), NOT timestamp: a chain links to
-     * whichever event was appended immediately before it, and an imported video
-     * can legitimately contribute an event older than events already stored.
+     * whichever event was appended immediately before it, preserving append
+     * order regardless of event timestamps.
      *
      * Events belonging to other sessions are ignored, so a broken session can
      * never make a healthy one look invalid. An empty session verifies true; a

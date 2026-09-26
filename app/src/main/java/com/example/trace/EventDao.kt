@@ -35,8 +35,8 @@ interface EventDao {
      * The most recently *appended* event of a session — its chain tip.
      *
      * Deliberately ordered by id, not timestamp: the chain records the order in
-     * which TRACE appended evidence. Video import can contribute an event whose
-     * timestamp is older than the current tip, and ordering by timestamp would
+     * which TRACE appended evidence. An imported event could have a
+     * timestamp older than the current tip, and ordering by timestamp would
      * then link the new event to a row that does not actually precede it.
      */
     @Query("SELECT * FROM events WHERE sessionId = :sessionId ORDER BY id DESC LIMIT 1")

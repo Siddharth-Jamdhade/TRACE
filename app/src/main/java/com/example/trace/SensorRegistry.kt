@@ -59,11 +59,7 @@ object SensorRegistry {
         LIGHT, LINEAR, GYROSCOPE, STEP, SIGMOTION
     )
 
-    /** Import source (not a physical sensor): ML Kit-labelled video events. */
-    val VIDEO = SensorSpec("video", -1, "🎥", "Imported video keyframes")
-
-    /**
-     * Human assertion, not a measurement: the operator saw something happen and
+    /** Human assertion, not a measurement: the operator saw something happen and
      * tagged it from the live view.
      *
      * Deliberately absent from [ALL], because it is not a sensor and must not
@@ -77,8 +73,8 @@ object SensorRegistry {
     val MANUAL = SensorSpec("manual", -1, "✋",
         "Operator assertion: an incident a human on scene reported directly")
 
-    /** Sources that are NOT physical sensors: human input and imported video. */
-    val NON_SENSOR = listOf(VIDEO, MANUAL)
+    /** Sources that are NOT physical sensors (human input only). */
+    val NON_SENSOR = listOf(MANUAL)
 
     fun byId(id: String): SensorSpec? =
         ALL.firstOrNull { it.id == id } ?: NON_SENSOR.firstOrNull { it.id == id }

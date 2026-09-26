@@ -6,11 +6,11 @@ import android.content.Context
  * TRACE — Evidence Lock.
  *
  * When locked, TRACE must not add, modify or import any evidence: no new
- * sensor events and no video-import events. The flag lives in
+ * sensor events. The flag lives in
  * SharedPreferences so it survives an app restart.
  *
  * Every writer checks this before touching the database
- * ([MainActivity.onObservation], [VideoImportActivity], and the Timeline
+ * ([MainActivity.onObservation] and the Timeline
  * controls in [TimelineActivity]).
  *
  * This is user-facing state, not a security boundary: it prevents accidental

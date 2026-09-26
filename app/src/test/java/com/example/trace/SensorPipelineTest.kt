@@ -176,7 +176,6 @@ class SensorPipelineTest {
         for (spec in SensorRegistry.ALL) {
             assertEquals(spec.icon, SensorRegistry.iconFor(spec.id))
         }
-        assertEquals("🎥", SensorRegistry.iconFor("video"))
         assertEquals("❓", SensorRegistry.iconFor("unknown_sensor"))
     }
 }

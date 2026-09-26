@@ -52,10 +52,6 @@ class ManualTagTest {
     fun aTagAloneIsNotAVerdict() {
         assertTrue(FusionEngine.isHumanAsserted(tag()))
         assertFalse(FusionEngine.isHumanAsserted(sensor("motion", 0.9f)))
-        assertFalse(
-            "imported video is machine-labelled, not a human claim",
-            FusionEngine.isHumanAsserted(sensor(SensorRegistry.VIDEO.id, 0.9f))
-        )
 
         assertEquals(
             "a tag with no sensor evidence is not an incident the sensors confirmed",
