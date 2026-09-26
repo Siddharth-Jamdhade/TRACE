@@ -87,6 +87,17 @@ data class Event(
     /** SHA-256 of the snapshot file at the moment it was written. */
     val photoHash: String? = null,
 
+    // --- Tier 2 cross-sensor corroboration data ----------------------
+    /**
+     * JSON object with other sensors' values at the moment this event was
+     * triggered, e.g. {"magnetometer":{"value":45.2,"sigma":1.2},
+     * "audio":{"value":0.03,"sigma":0.8}}.
+     *
+     * Present only when Tier 2 media capture fired and there were other
+     * active sensors to query.
+     */
+    val crossSensorData: String? = null,
+
     // --- SHA-256 hash chain fields ---------------------------------------
     /** SHA-256 hash of this event chained to [previousHash]. */
     val hash: String? = null,

@@ -10,6 +10,7 @@ import com.example.trace.EvidenceFiles
 import com.example.trace.FileIntegrity
 import com.example.trace.LiveBus
 import com.example.trace.Observation
+import com.example.trace.SensorLogger
 import com.example.trace.SessionLog
 import com.example.trace.SensorRegistry
 import kotlinx.coroutines.*
@@ -174,6 +175,7 @@ class AudioSource(
         val rms = kotlin.math.sqrt(sumSq / n) / 32768.0  // normalize to 0..1
         val zcr = zcCount.toDouble() / n
 
+        SensorLogger.publishValue("audio", rms, tMs * 1_000_000L)
         rmsBaseline.feed(rms)
         val sigma = rmsBaseline.deviationSigma(rms)
 

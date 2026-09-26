@@ -11,7 +11,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * Current schema version. Bump this AND add the matching migration to
  * [TraceDatabase.MIGRATIONS] whenever an entity changes.
  */
-internal const val TRACE_DB_VERSION = 7
+internal const val TRACE_DB_VERSION = 8
 
 /**
  * Oldest schema version this build can open without destroying evidence.
@@ -30,7 +30,9 @@ internal const val TRACE_DB_OLDEST_SUPPORTED = 2
 //   v5 — v4 + events.evidencePhotoPath (camera snapshot per event)
 //   v6 — v5 + events.clipHash / photoHash (evidence file integrity)
 //   v7 — v6 + events.baselineValue / observedValue / deviationSigma (deviation context)
-@Database(entities = [Event::class, Session::class], version = TRACE_DB_VERSION)
+//   v8 — v7 + sensor_logs table (Tier 1 continuous numeric logging),
+//        events.crossSensorData (Tier 2 cross-sensor corroboration)
+@Database(entities = [Event::class, Session::class, SensorLog::class], version = TRACE_DB_VERSION)
 abstract class TraceDatabase : RoomDatabase() {
     abstract fun eventDao(): EventDao
     abstract fun sessionDao(): SessionDao
@@ -112,13 +114,32 @@ abstract class TraceDatabase : RoomDatabase() {
             }
         }
 
+        /** v7 → v8: Tier 1 sensor_logs table + cross-sensor corroboration field. */
+        val MIGRATION_7_8: Migration = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `sensor_logs` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`sessionId` INTEGER NOT NULL, " +
+                        "`source` TEXT NOT NULL, " +
+                        "`timestamp` INTEGER NOT NULL, " +
+                        "`value` REAL NOT NULL)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_sensor_logs_sessionId_source_timestamp` " +
+                        "ON `sensor_logs` (`sessionId`, `source`, `timestamp`)"
+                )
+                db.execSQL("ALTER TABLE events ADD COLUMN crossSensorData TEXT")
+            }
+        }
+
         /**
          * Every migration this build ships. The range
          * [TRACE_DB_OLDEST_SUPPORTED] .. [TRACE_DB_VERSION] must be fully
          * covered — enforced by DatabaseMigrationTest.
          */
         val MIGRATIONS: Array<Migration> =
-            arrayOf(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+            arrayOf(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
 
         @Volatile private var INSTANCE: TraceDatabase? = null
 

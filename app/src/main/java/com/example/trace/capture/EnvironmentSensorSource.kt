@@ -7,6 +7,7 @@ import android.hardware.SensorManager
 import android.os.Handler
 import android.util.Log
 import com.example.trace.Observation
+import com.example.trace.SensorLogger
 import com.example.trace.SensorRegistry
 import kotlin.math.sqrt
 
@@ -64,6 +65,7 @@ class EnvironmentSensorSource(
             event.values[1] * event.values[1] +
             event.values[2] * event.values[2]
         )
+        SensorLogger.publishValue("magnetometer", mag.toDouble(), event.timestamp)
         magBaseline.feed(mag.toDouble())
         // Use sigma-based confidence when baseline is ready; fall back to delta
         val sigma = magBaseline.deviationSigma(mag.toDouble())
@@ -86,6 +88,7 @@ class EnvironmentSensorSource(
 
     private fun onPressure(tMs: Long, event: SensorEvent) {
         val hPa = event.values[0]
+        SensorLogger.publishValue("barometer", hPa.toDouble(), event.timestamp)
         pressureBaseline.feed(hPa.toDouble())
         val sigma = pressureBaseline.deviationSigma(hPa.toDouble())
         val confidence = if (sigma != null) {
@@ -107,6 +110,7 @@ class EnvironmentSensorSource(
 
     private fun onLight(tMs: Long, event: SensorEvent) {
         val lux = event.values[0]
+        SensorLogger.publishValue("light", lux.toDouble(), event.timestamp)
         lightBaseline.feed(lux.toDouble())
         val sigma = lightBaseline.deviationSigma(lux.toDouble())
         // Light sensor fires only on dimming (lights off)

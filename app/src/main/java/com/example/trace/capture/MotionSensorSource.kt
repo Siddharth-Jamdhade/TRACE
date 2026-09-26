@@ -9,6 +9,7 @@ import android.hardware.TriggerEventListener
 import android.os.Handler
 import android.util.Log
 import com.example.trace.Observation
+import com.example.trace.SensorLogger
 import com.example.trace.SensorRegistry
 import kotlin.math.sqrt
 
@@ -79,6 +80,7 @@ class MotionSensorSource(
         val dx = x - lastX; val dy = y - lastY; val dz = z - lastZ
         val jerk = sqrt(dx * dx + dy * dy + dz * dz)
 
+        SensorLogger.publishValue("motion", jerk.toDouble(), event.timestamp)
         motBaseline.feed(jerk.toDouble())
         val sigma = motBaseline.deviationSigma(jerk.toDouble())
         val confidence = toConfidence(jerk, MOTION_THRESHOLD, MOTION_MAX)
@@ -103,6 +105,7 @@ class MotionSensorSource(
             event.values[1] * event.values[1] +
             event.values[2] * event.values[2]
         )
+        SensorLogger.publishValue("gyroscope", mag.toDouble(), event.timestamp)
         gyroBaseline.feed(mag.toDouble())
         val sigma = gyroBaseline.deviationSigma(mag.toDouble())
         val confidence = toConfidence(mag, 1.5f, 8f)
@@ -124,6 +127,7 @@ class MotionSensorSource(
             event.values[1] * event.values[1] +
             event.values[2] * event.values[2]
         )
+        SensorLogger.publishValue("linear", mag.toDouble(), event.timestamp)
         linearBaseline.feed(mag.toDouble())
         val sigma = linearBaseline.deviationSigma(mag.toDouble())
         // Free-fall: lower magnitude = higher confidence

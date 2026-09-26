@@ -16,6 +16,7 @@ import com.example.trace.EvidenceFiles
 import com.example.trace.FileIntegrity
 import com.example.trace.LiveBus
 import com.example.trace.Observation
+import com.example.trace.SensorLogger
 import com.example.trace.SessionLog
 import com.example.trace.SensorRegistry
 import kotlinx.coroutines.CoroutineScope
@@ -82,6 +83,7 @@ class CameraSource(
 
                 val capture = ImageCapture.Builder()
                     .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                    .setJpegQuality(50)  // ~50-70 KB per snapshot
                     .build()
                 imageCapture = capture
 
@@ -143,6 +145,7 @@ class CameraSource(
                     if (diff > 30) changed++
                 }
                 val ratio = changed.toFloat() / scaled.size
+                SensorLogger.publishValue("camera", ratio.toDouble(), proxy.imageInfo.timestamp)
                 baseline.feed(ratio.toDouble())
                 val sigma = baseline.deviationSigma(ratio.toDouble())
 

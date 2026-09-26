@@ -112,4 +112,18 @@ interface EventDao {
      */
     @Query("DELETE FROM events WHERE sessionId = :sessionId")
     suspend fun deleteEventsForSession(sessionId: Long)
+
+    // ── Tier 1 sensor log queries ───────────────────────────────────────────
+
+    @Insert
+    suspend fun insertSensorLogs(logs: List<SensorLog>)
+
+    @Query("SELECT * FROM sensor_logs WHERE sessionId = :sessionId AND source = :source AND timestamp >= :sinceTimestamp ORDER BY timestamp ASC")
+    suspend fun getSensorLogsForSession(sessionId: Long, source: String, sinceTimestamp: Long): List<SensorLog>
+
+    @Query("SELECT COUNT(*) FROM sensor_logs WHERE sessionId = :sessionId")
+    suspend fun countSensorLogsForSession(sessionId: Long): Int
+
+    @Query("DELETE FROM sensor_logs WHERE sessionId = :sessionId")
+    suspend fun deleteSensorLogsForSession(sessionId: Long)
 }

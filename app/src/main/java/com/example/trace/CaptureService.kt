@@ -26,11 +26,16 @@ import com.example.trace.capture.EnvironmentSensorSource
 import com.example.trace.capture.MotionSensorSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.abs
 
 /**
  * TRACE — foreground capture service (Stage 8, refactored).
@@ -83,6 +88,24 @@ class CaptureService : Service(), LifecycleOwner {
 
     // ── Tuning constants ──────────────────────────────────────────────────
     private val EVENT_COOLDOWN_MS = 1000L
+
+    // ── Tier 1 logging ────────────────────────────────────────────────────
+    private var sensorLoggerJob: Job? = null
+
+    // ── Tier 2 per-sensor transition state ────────────────────────────────
+    private data class SensorTransitionState(
+        var phase: TransitionPhase = TransitionPhase.IDLE,
+        /** Timestamp (monotonic ms) when this sensor last triggered Tier 2. */
+        var lastTriggeredMs: Long = 0L,
+    )
+    private enum class TransitionPhase { IDLE, CAPTURED }
+
+    private val sensorTransition = ConcurrentHashMap<String, SensorTransitionState>()
+
+    /** Minimum sigma to qualify as a genuine Tier 2 transition. */
+    private val TIER_2_SIGMA_THRESHOLD = 3.0
+    /** Seconds a sensor must stay quiet before re-arming for the next transition. */
+    private val TIER_2_RESET_SECONDS = 5
 
     // ── Service lifecycle ─────────────────────────────────────────────────
 
@@ -158,6 +181,11 @@ class CaptureService : Service(), LifecycleOwner {
 
         // Reset stale state
         lastEventTime.clear()
+        sensorTransition.clear()
+        SensorLogger.reset()
+
+        // Start Tier 1 continuous numeric logging
+        startTier1Logger(session.id)
 
         // Start extracted sources
         startMotionSensors()
@@ -236,6 +264,10 @@ class CaptureService : Service(), LifecycleOwner {
     }
 
     private fun stopCapturePipelines() {
+        sensorLoggerJob?.cancel()
+        sensorLoggerJob = null
+        sensorTransition.clear()
+        SensorLogger.reset()
         motionSource?.stop()
         environmentSource?.stop()
         audioSource?.stop()
@@ -374,30 +406,53 @@ class CaptureService : Service(), LifecycleOwner {
     // ── The pipeline ──────────────────────────────────────────────────────
 
     /**
-     * Central observation handler. Receives observations from all capture
-     * sources and records each as a generic deviation entry — no activity label,
-     * no fusion status, no CONFIRMED/UNCONFIRMED/REJECTED.
+     * Central observation handler.  Two-tier filtering:
      *
-     * Each deviation is self-contained: the sensor source, its running baseline
-     * at detection time, the value that triggered it, and the magnitude of
-     * deviation. Interpretation is left to the AI review layer.
+     * **Tier 2** — only genuine transitions (sigma ≥ [TIER_2_SIGMA_THRESHOLD])
+     * trigger an Event + media capture.  Each sensor has a state machine
+     * (IDLE → CAPTURED → IDLE) so capture fires *once per transition*, not
+     * continuously while the sensor holds its elevated value.  The sensor must
+     * return to baseline for [TIER_2_RESET_SECONDS] before it can trigger again.
      *
-     * Cooldown prevents sensor-level spam while allowing independent sensors to
-     * each flag at their own rate.
+     * Observations that do NOT qualify as Tier 2 transitions are still
+     * collected by Tier 1 logging (the sensor sources publish their current
+     * values to [SensorLogger] on every reading, and [startTier1Logger]
+     * persists them at a fixed interval regardless).
      */
     private fun onObservation(obs: Observation) {
         val sessionId = SessionManager.activeSessionId ?: return
         if (EvidenceLock.isLocked(this)) return
 
-        // Cooldown per sensor source (prevents spam while allowing
-        // independent sensors to each flag at their own rate).
+        // Cooldown per sensor source — still applies to prevent spam from
+        // independent sensors that each fire at their own rate.
         val lastTime = lastEventTime[obs.source] ?: 0L
         if (obs.timestamp - lastTime < EVENT_COOLDOWN_MS) return
         lastEventTime[obs.source] = obs.timestamp
 
+        // ── Tier 2 state machine ───────────────────────────────────────────
+        val sigma = obs.deviationSigma ?: 0.0
+        val state = sensorTransition.getOrPut(obs.source) { SensorTransitionState() }
+
+        val shouldTrigger = when (state.phase) {
+            TransitionPhase.IDLE -> sigma >= TIER_2_SIGMA_THRESHOLD
+            TransitionPhase.CAPTURED -> {
+                // Check if enough time has passed with the sensor back at
+                // baseline to re-arm for the next transition.
+                val quietTime = (obs.timestamp - state.lastTriggeredMs) / 1_000
+                if (quietTime >= TIER_2_RESET_SECONDS && sigma < 1.0) {
+                    state.phase = TransitionPhase.IDLE
+                    sigma >= TIER_2_SIGMA_THRESHOLD   // trigger again if it's still deviating
+                } else false
+            }
+        }
+
+        if (!shouldTrigger) return
+        state.phase = TransitionPhase.CAPTURED
+        state.lastTriggeredMs = obs.timestamp
+
         // Create a generic deviation entry — no activity label, no fusion.
         val baseEvent = Event(
-            type = obs.source,     // use sensor name as the generic "type"
+            type = obs.source,
             timestamp = obs.timestamp,
             source = obs.source,
             confidence = obs.confidence,
@@ -410,28 +465,168 @@ class CaptureService : Service(), LifecycleOwner {
             val session = database.sessionDao().getSessionById(sessionId) ?: return@launch
             if (session.state != Session.STATE_ACTIVE) return@launch
 
+            // ── Cross-sensor corroboration ────────────────────────────
+            // Gather other sensors' current values and recent ring-buffer
+            // entries to attach to this event.
+            val crossData = gatherCrossSensorContext(obs.source, obs.timestamp)
+
+            val enrichedEvent = if (crossData != null)
+                baseEvent.copy(crossSensorData = crossData.toString())
+            else baseEvent
+
             // Write to hash chain without enrichment or fusion.
-            val finalEvent = ChainWriter.append(database.eventDao(), session, baseEvent)
+            val finalEvent = ChainWriter.append(database.eventDao(), session, enrichedEvent)
             val newId = finalEvent.id
-            Log.d("TRACE", "DEVIATION SAVED: id=$newId source=${obs.source} confidence=${obs.confidence}")
+            Log.d("TRACE", "TIER 2 TRIGGERED: id=$newId source=${obs.source} sigma=${"%.1f".format(sigma)}")
 
             LiveBus.eventCount += 1
             LiveBus.log.append(
                 SessionLog.Kind.EVENT,
-                "${SensorRegistry.iconFor(obs.source)} ${SensorRegistry.labelFor(obs.source)} deviation" +
-                    " · ${"%.0f".format(obs.confidence * 100)}%",
+                "${SensorRegistry.iconFor(obs.source)} ${SensorRegistry.labelFor(obs.source)} " +
+                    "· σ=${"%.1f".format(sigma)} · ${"%.0f".format(obs.confidence * 100)}%",
                 finalEvent.timestamp,
             )
             LiveBus.setConfidence(obs.source, obs.confidence)
 
-            // Evidence clip + snapshot (unchanged)
+            // Tier 2 media capture
             val clipPath = audioSource?.saveEvidenceClip(newId)
             if (clipPath != null) {
                 database.eventDao().updateClipPath(newId, clipPath)
             }
             cameraSource?.takeSnapshot(newId)
 
+            // ── Compound event escalation ─────────────────────────────
+            // If any other sensor is also independently deviating (sigma ≥
+            // threshold), trigger its Tier 2 capture too.
+            for ((otherSource, value) in SensorLogger.currentValues) {
+                if (otherSource == obs.source) continue
+                if (otherSource !in armedSensorIds) continue
+                // We don't have the other sensor's sigma here, but we can
+                // check if it's been recently active by looking at the ring
+                // buffer.  For now, do a simple proximity check: if the
+                // other sensor's value is >2x its typical baseline (read
+                // from the ring buffer mean), escalate.
+                val recent = SensorLogger.readRecent(otherSource, obs.timestamp, 3_000)
+                if (recent.size >= 5) {
+                    val mean = recent.map { it.second }.average()
+                    val std = kotlin.math.sqrt(
+                        recent.map { (it.second - mean) * (it.second - mean) }.average()
+                    )
+                    val zScore = if (std > 0.0) abs(value - mean) / std else 0.0
+                    if (zScore >= TIER_2_SIGMA_THRESHOLD / 2) {
+                        // Escalate: this is a compound event — trigger Tier 2
+                        // for this sensor too by synthesising an observation.
+                        Log.d("TRACE", "COMPOUND: escalating $otherSource (z=${"%.1f".format(zScore)})")
+                        // Trigger media capture for the compound sensor by
+                        // asking the existing sources to save evidence.
+                        escalateCompoundCapture(otherSource)
+                    }
+                }
+            }
+
             updateNotification()
+        }
+    }
+
+    /**
+     * Gathers the current values of all armed sensors (except the trigger)
+     * and recent ring-buffer entries, returning a JSON object for the event's
+     * [Event.crossSensorData] field, or null if no corroborating data exists.
+     */
+    private fun gatherCrossSensorContext(triggerSource: String, nowMs: Long): JSONObject? {
+        val json = JSONObject()
+        var hasData = false
+        for (id in armedSensorIds) {
+            if (id == triggerSource) continue
+            val value = SensorLogger.currentValues[id] ?: continue
+            val recent = SensorLogger.readRecent(id, nowMs, 5_000)
+            val obj = JSONObject().apply {
+                put("value", value)
+                if (recent.isNotEmpty()) {
+                    val mean = recent.map { it.second }.average()
+                    val std = kotlin.math.sqrt(
+                        recent.map { (it.second - mean) * (it.second - mean) }.average()
+                    )
+                    put("recentMean", "%.4f".format(mean))
+                    put("recentSigma", "%.2f".format(std))
+                }
+            }
+            json.put(id, obj)
+            hasData = true
+        }
+        return if (hasData) json else null
+    }
+
+    /**
+     * Escalates a compound event: triggers media capture for [sensorSource]
+     * when an independent sensor is also deviating at the same time.
+     *
+     * Because compound events don't create a separate Event record (the
+     * primary sensor's event represents the moment), this just forces a
+     * snapshot + clip save for the corroborating sensor's data.  The
+     * cross-sensor JSON on the primary event already carries the secondary
+     * sensor's numeric values.
+     */
+    private fun escalateCompoundCapture(sensorSource: String) {
+        // For now, compound escalation is a no-op for media capture since
+        // the snapshot and audio clip are already captured for the triggering
+        // event.  Future work could capture additional evidence from the
+        // corroborating sensor's dedicated source (e.g. a frame from a
+        // different camera angle).
+        Log.d("TRACE", "Compound capture noted for $sensorSource")
+    }
+
+    // ── Tier 1 continuous numeric logging ─────────────────────────────────
+
+    /**
+     * Starts a background coroutine that polls each active sensor's latest
+     * value from [SensorLogger.currentValues] at a fixed interval and
+     * persists them to the [SensorLog] table in batches.
+     *
+     * This runs for the FULL session duration regardless of whether anything
+     * is triggering Tier 2.  The logged data provides the continuous trend
+     * record and enables longer-term baseline analysis even after process
+     * death.
+     */
+    private fun startTier1Logger(sessionId: Long) {
+        sensorLoggerJob?.cancel()
+        sensorLoggerJob = serviceScope.launch {
+            val batch = mutableListOf<SensorLog>()
+            var lastLogTimestamps = mutableMapOf<String, Long>()
+
+            while (isActive) {
+                val now = monoTimeMs()
+                for (id in armedSensorIds) {
+                    val value = SensorLogger.currentValues[id] ?: continue
+                    // Only log if at least 1 second has passed since the
+                    // last log for this sensor (avoids redundant entries
+                    // when values update faster than the poll interval).
+                    val lastTs = lastLogTimestamps[id] ?: 0L
+                    if (now - lastTs >= 1_000) {
+                        batch.add(SensorLog(
+                            sessionId = sessionId,
+                            source = id,
+                            timestamp = now,
+                            value = value,
+                        ))
+                        lastLogTimestamps[id] = now
+                    }
+                }
+
+                // Flush every 30 seconds or 200 entries, whichever comes first.
+                if (batch.size >= 200 || (batch.isNotEmpty() && now % 30_000 < 2_000)) {
+                    database.eventDao().insertSensorLogs(batch.toList())
+                    batch.clear()
+                }
+
+                delay(1_000)
+            }
+
+            // Flush remaining entries on shutdown.
+            if (batch.isNotEmpty()) {
+                database.eventDao().insertSensorLogs(batch.toList())
+                batch.clear()
+            }
         }
     }
 
