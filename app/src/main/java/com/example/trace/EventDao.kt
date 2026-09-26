@@ -121,6 +121,9 @@ interface EventDao {
     @Query("SELECT * FROM sensor_logs WHERE sessionId = :sessionId AND source = :source AND timestamp >= :sinceTimestamp ORDER BY timestamp ASC")
     suspend fun getSensorLogsForSession(sessionId: Long, source: String, sinceTimestamp: Long): List<SensorLog>
 
+    @Query("SELECT * FROM sensor_logs WHERE sessionId = :sessionId ORDER BY timestamp ASC")
+    suspend fun getAllSensorLogsForSession(sessionId: Long): List<SensorLog>
+
     @Query("SELECT COUNT(*) FROM sensor_logs WHERE sessionId = :sessionId")
     suspend fun countSensorLogsForSession(sessionId: Long): Int
 

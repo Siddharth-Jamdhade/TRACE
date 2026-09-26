@@ -44,6 +44,8 @@ class SessionReviewActivity : AppCompatActivity() {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private lateinit var adapter: EventAdapter
+    private lateinit var logAdapter: SensorLogAdapter
+    private var showSensorLogs = false
 
     private var sessionId: Long = -1L
     private var session: Session? = null
@@ -66,8 +68,15 @@ class SessionReviewActivity : AppCompatActivity() {
                     .putExtra("eventId", event.id)
             )
         }
+        logAdapter = SensorLogAdapter()
         binding.recyclerEvents.layoutManager = LinearLayoutManager(this)
         binding.recyclerEvents.adapter = adapter
+
+        binding.switchShowAll.setOnCheckedChangeListener { _, isChecked ->
+            showSensorLogs = isChecked
+            if (isChecked) loadSensorLogs()
+            else reloadEvents()
+        }
 
         binding.btnChat.setOnClickListener {
             startActivity(
@@ -124,8 +133,29 @@ class SessionReviewActivity : AppCompatActivity() {
         )
 
         adapter.submitList(events.sortedByDescending { it.timestamp })
-        // Menu visibility depends on the now-loaded session; force re-prepare.
         invalidateOptionsMenu()
+    }
+
+    /** Loads Tier 1 sensor logs and swaps the adapter to show them. */
+    private fun loadSensorLogs() {
+        scope.launch {
+            val logs = database.eventDao().getAllSensorLogsForSession(sessionId)
+            withContext(Dispatchers.Main) {
+                binding.recyclerEvents.adapter = logAdapter
+                logAdapter.submitList(logs.sortedByDescending { it.timestamp })
+            }
+        }
+    }
+
+    /** Reloads regular events and swaps the adapter back. */
+    private fun reloadEvents() {
+        scope.launch {
+            val events = database.eventDao().getEventsForSession(sessionId)
+            withContext(Dispatchers.Main) {
+                binding.recyclerEvents.adapter = adapter
+                adapter.submitList(events.sortedByDescending { it.timestamp })
+            }
+        }
     }
 
     // ── Menu: per-session export + delete ─────────────────────────────────

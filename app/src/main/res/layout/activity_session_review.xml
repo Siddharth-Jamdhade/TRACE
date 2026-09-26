@@ -47,17 +47,42 @@
 
     </ScrollView>
 
-    <TextView
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:orientation="horizontal"
         android:paddingStart="16dp"
+        android:paddingEnd="12dp"
         android:paddingTop="10dp"
         android:paddingBottom="6dp"
-        android:text="EVENTS"
-        android:textColor="?attr/colorPrimary"
-        android:textSize="10sp"
-        android:letterSpacing="0.15"
-        android:fontFamily="monospace" />
+        android:gravity="center_vertical">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="EVENTS"
+            android:textColor="?attr/colorPrimary"
+            android:textSize="10sp"
+            android:letterSpacing="0.15"
+            android:fontFamily="monospace" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Show all"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:textSize="11sp"
+            android:layout_marginEnd="6dp" />
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/switchShowAll"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:thumbTint="?attr/colorPrimary"
+            android:trackTint="?attr/colorPrimaryContainer" />
+
+    </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerEvents"
