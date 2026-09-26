@@ -70,6 +70,9 @@ dependencies {
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
+    // On-device LLM inference (Qwen 3 4B via llama.cpp GGUF, arm64-v8a)
+    implementation("dev.ffmpegkit-maintained:llama-android:0.1.1")
+
     // Unit tests (ExampleUnitTest.kt)
     testImplementation("junit:junit:4.13.2")
 

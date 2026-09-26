@@ -360,6 +360,9 @@ class MainActivity : AppCompatActivity() {
                 eventCount = LiveBus.eventCount
                 if (existing != null) {
                     Log.i("TRACE", "Resumed session ${existing.id} with ${armedSensorIds.size} sensors")
+                    // Hand the preview over to the service before starting it,
+                    // so CameraSource binds with the surface provider ready.
+                    refreshCaptureLayout()
                     // Re-attach capture if the service is not already running
                     // (first launch of a session armed before a re-creation).
                     if (!CaptureService.running) CaptureService.start(this@MainActivity)
@@ -415,6 +418,10 @@ class MainActivity : AppCompatActivity() {
                 // recording must not read as part of this one.
                 sessionLog.clear()
                 refreshLog()
+                // Switch camera from activity-bound preview to service-bound
+                // preview BEFORE starting the service, so CameraSource receives
+                // the surface provider during bindToLifecycle.
+                refreshCaptureLayout()
                 CaptureService.start(this@MainActivity)
                 appendLog(
                     SessionLog.Kind.LIFECYCLE,

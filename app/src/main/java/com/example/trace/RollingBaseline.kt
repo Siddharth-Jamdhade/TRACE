@@ -1,60 +1,64 @@
 package com.example.trace
 
+import com.example.trace.capture.BaselineTracker
+
 /**
- * TRACE — Rolling Baseline
+ * Per-sensor adaptive baseline using EWMA with sigma-gated detection.
  *
- * Environment sensors (magnetic field, air pressure, ambient light) are only
- * meaningful relative to the *local* conditions at recording time: the Earth's
- * magnetic field differs by hemisphere and building steelwork, barometric
- * readings drift with weather, and light levels range from a dark closet to
- * direct sunlight. Absolute thresholds are therefore useless.
+ * Replaces the original simple-EWMA implementation with full sigma-floor
+ * semantics. Each named sensor gets its own [BaselineTracker] configured
+ * with appropriate sigma floors for its physical range.
  *
- * This class maintains a per-sensor exponentially-weighted moving average
- * (EWMA) that adapts to the ambient level over ~30 s so that detectors can
- * fire on *deviations* from the environment rather than fixed values.
- *
- * Thread-safety: synchronized — environment listeners run on the main thread
- * only, but the guard costs nothing and makes the class safe to share.
- *
- * A deliberate default is supplied per sensor so the very first reading never
- * produces a huge fake delta (e.g. raw barometer ≈ 1013 hPa vs a naive
- * default of 0 would look like a monster pressure event).
+ * The legacy [feed]/[get]/[resetAll] interface is preserved so existing
+ * callers in [CaptureService] continue to work unchanged.
  */
 class RollingBaseline {
 
-    companion object {
-        /** ~30 s warm-up at 50 Hz equivalent: alpha=0.05. */
-        private const val ALPHA = 0.05f
-
-        /** Neutral starting points so the first sample can't fake a spike. */
-        private val DEFAULTS = mapOf(
-            "magnetometer" to 48f,    // typical indoor Earth-field magnitude (µT)
-            "barometer"    to 1013.25f, // standard sea-level pressure (hPa)
-            "light"        to 200f    // ordinary indoor lighting (lux)
-        )
-    }
-
-    private val baselines = HashMap<String, Float>()
+    private val trackers = HashMap<String, BaselineTracker>()
 
     /**
-     * Feeds a fresh sample and returns the absolute deviation from the
-     * baseline BEFORE the sample was merged (i.e. the delta the detector
-     * should evaluate).
+     * Feeds a sample for [sensor] and returns the absolute deviation from
+     * the baseline *before* the sample was merged.
      */
     @Synchronized
     fun feed(sensor: String, value: Float): Float {
-        val baseline = baselines.getOrDefault(sensor, DEFAULTS[sensor] ?: value)
-        val delta = kotlin.math.abs(value - baseline)
-        baselines[sensor] = baseline + ALPHA * (value - baseline)
-        return delta
+        val t = trackers.getOrPut(sensor) { trackerFor(sensor) }
+        return t.feed(value)
     }
 
-    /** Current smoothed baseline for [sensor]. */
+    /** Current smoothed baseline for [sensor], or a sensible default. */
     @Synchronized
     fun get(sensor: String): Float =
-        baselines.getOrDefault(sensor, DEFAULTS[sensor] ?: 0f)
+        trackers[sensor]?.baselineMean?.toFloat() ?: DEFAULTS[sensor] ?: 0f
 
-    /** Clears everything (used when recording restarts). */
+    /** True once the tracker for [sensor] has seen enough samples. */
     @Synchronized
-    fun resetAll() = baselines.clear()
+    fun isReady(sensor: String): Boolean =
+        trackers[sensor]?.ready ?: false
+
+    /** Deviation sigma for [value] against [sensor]'s baseline, or null if not ready. */
+    @Synchronized
+    fun deviationSigma(sensor: String, value: Float): Double? =
+        trackers[sensor]?.deviationSigma(value.toDouble())
+
+    /** Clears all baselines (used when recording restarts). */
+    @Synchronized
+    fun resetAll() {
+        trackers.clear()
+    }
+
+    private fun trackerFor(sensor: String): BaselineTracker = when (sensor) {
+        "magnetometer" -> BaselineTracker(minSamples = 200, sigmaFloor = 1.0, relativeSigmaFloor = 0.03)
+        "barometer" -> BaselineTracker(minSamples = 200, sigmaFloor = 1.0, relativeSigmaFloor = 0.0002)
+        "light" -> BaselineTracker(minSamples = 100, sigmaFloor = 2.0, relativeSigmaFloor = 0.05)
+        else -> BaselineTracker(minSamples = 100, sigmaFloor = 0.5)
+    }
+
+    companion object {
+        private val DEFAULTS = mapOf(
+            "magnetometer" to 48f,
+            "barometer" to 1013.25f,
+            "light" to 200f,
+        )
+    }
 }

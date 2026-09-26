@@ -5,9 +5,6 @@ import android.view.ViewGroup
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.example.trace.databinding.ItemLogLineBinding
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
  * TRACE — adapter for the dashboard's live session log tail.
@@ -41,10 +38,8 @@ class SessionLogAdapter : RecyclerView.Adapter<SessionLogAdapter.LogViewHolder>(
     class LogViewHolder(private val binding: ItemLogLineBinding) :
         RecyclerView.ViewHolder(binding.root) {
 
-        private val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-
         fun bind(line: SessionLog.Line) {
-            binding.tvLogLine.text = "${timeFmt.format(Date(line.timestamp))}  ${line.text}"
+            binding.tvLogLine.text = "${TimestampDisplay.formatTime(line.timestamp)}  ${line.text}"
             binding.tvLogLine.setTextColor(
                 ContextCompat.getColor(binding.root.context, colorFor(line.kind))
             )

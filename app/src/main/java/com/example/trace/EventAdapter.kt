@@ -7,9 +7,6 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.example.trace.databinding.ItemEventBinding
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
  * TRACE — RecyclerView adapter for the incident timeline.
@@ -21,8 +18,6 @@ import java.util.Locale
 class EventAdapter(
     private val onItemClick: (Event) -> Unit
 ) : ListAdapter<Event, EventAdapter.EventViewHolder>(EventDiffCallback()) {
-
-    private val timeFmt = SimpleDateFormat("MMM dd  HH:mm:ss", Locale.getDefault())
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): EventViewHolder {
         val binding = ItemEventBinding.inflate(LayoutInflater.from(parent.context), parent, false)
@@ -41,7 +36,7 @@ class EventAdapter(
             binding.tvIcon.text = SensorRegistry.iconFor(event.source)
             binding.tvEventType.text = event.type.replace("_", " ")
                 .replaceFirstChar { it.uppercase() }
-            binding.tvTimestamp.text = timeFmt.format(Date(event.timestamp))
+            binding.tvTimestamp.text = TimestampDisplay.formatTime(event.timestamp)
             // A human assertion has no sensor confidence behind it, so printing a
             // percentage would dress a claim up as a measurement. Say what it is.
             binding.tvSource.text = if (event.source == SensorRegistry.MANUAL.id) {

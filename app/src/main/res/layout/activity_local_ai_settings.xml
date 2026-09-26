@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="?attr/colorSurface">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorSurfaceVariant"
+        app:titleTextColor="?attr/colorPrimary"
+        app:navigationIconTint="?attr/colorPrimary" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="MODEL FILE"
+                android:textColor="?attr/colorPrimary"
+                android:textSize="10sp"
+                android:letterSpacing="0.15"
+                android:fontFamily="monospace"
+                android:paddingBottom="8dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="12sp"
+                android:lineSpacingExtra="3dp"
+                android:text="Select a GGUF-format model file (e.g. Qwen 3 4B Q4_K_M) downloaded to your device. The model runs entirely on-device — no internet required." />
+
+            <!-- Current model info card -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardElevation="0dp"
+                app:strokeWidth="1dp"
+                app:strokeColor="@color/trace_outline"
+                app:contentPadding="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Loaded model"
+                        android:textColor="?attr/colorOnSurface"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvModelName"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:textSize="12sp"
+                        android:fontFamily="monospace"
+                        android:text="No model selected" />
+
+                    <TextView
+                        android:id="@+id/tvModelPath"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:textSize="11sp"
+                        android:fontFamily="monospace"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/tvModelSize"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:textSize="11sp"
+                        android:fontFamily="monospace"
+                        android:visibility="gone" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <Button
+                android:id="@+id/btnSelectModel"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="20dp"
+                android:text="SELECT MODEL FILE"
+                android:textColor="?attr/colorOnPrimary"
+                android:textStyle="bold"
+                android:backgroundTint="?attr/colorPrimary" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="11sp"
+                android:text="Opens the file picker. Look for a .gguf file in your Downloads or TRACE/models folder." />
+
+            <!-- Status -->
+            <TextView
+                android:id="@+id/tvStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="12sp"
+                android:fontFamily="monospace" />
+
+            <!-- Load / Unload buttons -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnLoadModel"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="6dp"
+                    android:text="LOAD MODEL"
+                    android:textColor="?attr/colorOnPrimary"
+                    android:textStyle="bold"
+                    android:backgroundTint="?attr/colorPrimary" />
+
+                <Button
+                    android:id="@+id/btnClearModel"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:layout_marginStart="6dp"
+                    android:text="CLEAR"
+                    android:textColor="@color/trace_status_rejected"
+                    android:backgroundTint="@color/trace_surface_elevated" />
+
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:text="ABOUT ON-DEVICE AI"
+                android:textColor="?attr/colorPrimary"
+                android:textSize="10sp"
+                android:letterSpacing="0.15"
+                android:fontFamily="monospace"
+                android:paddingBottom="8dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="12sp"
+                android:lineSpacingExtra="3dp"
+                android:text="This device (iQOO 15, Snapdragon 8 Elite) can run a 4-billion-parameter model at approximately 12–25 tokens per second. Inference runs on CPU/NEON via llama.cpp.\n\nSession data (event log, labels, statuses — no audio or photos) is sent to the model on this device and never leaves it. No API key is needed.\n\nRecommended: Qwen 3 4B in Q4_K_M quantization (~2.3 GB). Download from HuggingFace and place in a TRACE/models folder on your device." />
+
+        </LinearLayout>
+
+    </ScrollView>
+
+</LinearLayout>

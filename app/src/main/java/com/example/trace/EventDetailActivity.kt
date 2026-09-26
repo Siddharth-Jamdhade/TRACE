@@ -20,9 +20,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
  * TRACE — Event Detail screen.
@@ -43,8 +40,6 @@ class EventDetailActivity : AppCompatActivity() {
 
     private var currentEvent: Event? = null
     private var mediaPlayer: MediaPlayer? = null
-
-    private val dateFmt = SimpleDateFormat("MMM dd, yyyy  HH:mm:ss", Locale.getDefault())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -119,7 +114,7 @@ class EventDetailActivity : AppCompatActivity() {
         binding.statusCard.setBackgroundColor(statusColor)
         binding.tvStatus.text    = e.status
         binding.tvEventType.text = e.type.replace("_", " ").replaceFirstChar { it.uppercase() }
-        binding.tvTimestamp.text = dateFmt.format(Date(e.timestamp))
+        binding.tvTimestamp.text = TimestampDisplay.formatDateTime(e.timestamp)
         binding.tvSource.text    =
             if (manual) "Primary source: manual (asserted by the operator)"
             else        "Primary source: ${e.source}"
@@ -300,7 +295,7 @@ class EventDetailActivity : AppCompatActivity() {
                 setImageBitmap(rotated)
             }
             AlertDialog.Builder(this)
-                .setTitle("Snapshot · ${dateFmt.format(Date(currentEvent?.timestamp ?: 0))}")
+                .setTitle("Snapshot · ${TimestampDisplay.formatDateTime(currentEvent?.timestamp ?: 0)}")
                 .setView(imageView)
                 .setPositiveButton("Close", null)
                 .show()

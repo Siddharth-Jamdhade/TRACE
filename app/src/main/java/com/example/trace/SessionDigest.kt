@@ -32,7 +32,7 @@ object SessionDigest {
 
     /** Shared human-readable timestamp for exports and headers. */
     fun formatTime(timestamp: Long): String =
-        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(timestamp))
+        TimestampDisplay.formatDateTime(timestamp)
 
     fun buildHeader(session: Session): String {
         val dateFmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
@@ -55,13 +55,12 @@ object SessionDigest {
 
     /** One line per event, oldest first. MANUAL tags are marked as human claims. */
     fun buildEventLines(events: List<Event>): List<String> {
-        val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.US)
         val ordered = events.sortedBy { it.id }
         val tail = ordered.takeLast(MAX_EVENT_LINES)
         val omitted = ordered.size - tail.size
 
         val lines = tail.map { e ->
-            val t = timeFmt.format(Date(e.timestamp))
+            val t = TimestampDisplay.formatTime(e.timestamp)
             val label = e.type.replace("_", " ")
             val conf = (e.confidence * 100).toInt()
             val extras = buildString {

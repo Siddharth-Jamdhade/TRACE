@@ -1,9 +1,5 @@
 package com.example.trace
 
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-
 /**
  * TRACE — Keyword Query Engine (MVP, no LLM required)
  *
@@ -12,8 +8,6 @@ import java.util.Locale
  * list-filter operations — never fabricated.
  */
 object QueryEngine {
-
-    private val timeFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 
     /** Main entry point. Returns a plain-text answer string. */
     fun answerQuery(question: String, events: List<Event>): String {
@@ -186,5 +180,5 @@ object QueryEngine {
             "  * ${e.type.replace("_", " ")} @ ${fmt(e.timestamp)} [${e.status}]"
         }
 
-    private fun fmt(ts: Long): String = timeFmt.format(Date(ts))
+    private fun fmt(ts: Long): String = TimestampDisplay.formatTime(ts)
 }

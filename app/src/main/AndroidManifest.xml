@@ -76,6 +76,11 @@
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 
+        <!-- Local AI: on-device model file selection and loading -->
+        <activity
+            android:name=".LocalAiSettingsActivity"
+            android:exported="false" />
+
         <!--
             FileProvider — lets us share the exported events.json file
             via the share sheet without needing WRITE_EXTERNAL_STORAGE.

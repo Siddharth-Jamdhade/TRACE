@@ -38,6 +38,9 @@ class SettingsActivity : AppCompatActivity() {
         binding.rowCloudAi.setOnClickListener {
             startActivity(Intent(this, CloudAiSettingsActivity::class.java))
         }
+        binding.rowLocalAi.setOnClickListener {
+            startActivity(Intent(this, LocalAiSettingsActivity::class.java))
+        }
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
