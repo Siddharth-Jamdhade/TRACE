@@ -7,16 +7,28 @@ import androidx.room.PrimaryKey
 /**
  * TRACE — Event database entity.
  *
- * Represents one detected incident entry in the timeline.
- * [cameraConfidence], [audioConfidence], [motionConfidence] are filled by
- * [FusionEngine] after looking at the 2-second window around this event.
+ * Represents one sensor deviation entry in the timeline — a moment where one
+ * sensor's reading deviated meaningfully from its own session baseline.
+ * Each entry is self-contained: the sensor that flagged it, the baseline range,
+ * the observed value, and the magnitude of deviation. There is no cross-sensor
+ * fusion or status labeling.
+ *
  * [hash] and [previousHash] implement the SHA-256 tamper-evidence chain.
+ *
+ * Legacy fields ([status], [cameraConfidence], [audioConfidence],
+ * [motionConfidence], [sensorBreakdown]) were used in the old activity-label
+ * + fusion system and are retained in the schema only for backward
+ * compatibility with historical data — they are never written by new code.
  */
 @Entity(tableName = "events")
 data class Event(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
 
-    /** Classified event label, e.g. "impact", "alarm", "object_falls". */
+    /**
+     * Sensor source name (e.g. "magnetometer", "camera", "audio", "motion").
+     * For new entries this matches [source]; legacy entries hold classified
+     * labels like "impact" or "door_slam".
+     */
     val type: String,
 
     /** System.currentTimeMillis() at detection time. */
@@ -25,27 +37,33 @@ data class Event(
     /** Primary triggering sensor: see [SensorRegistry] for all IDs. */
     val source: String,
 
-    /** Normalized confidence of the primary triggering sensor (0.0–1.0). */
+    /** Normalized deviation magnitude (0.0–1.0). Higher = further from baseline. */
     val confidence: Float,
 
     /**
-     * Fusion status: "CONFIRMED", "UNCONFIRMED", "REJECTED", or "MANUAL".
-     *
-     * "MANUAL" is not a fusion verdict — it marks a record a human asserted from
-     * the live view. It is excluded from [FusionEngine]'s source count, so a tag
-     * can never turn into a CONFIRMED incident on the strength of its own
-     * presence. Mutable, and excluded from [HashChain]'s payload, so review
-     * decisions (Confirm / Reject) never invalidate the chain.
+     * Legacy fusion status — no longer written.
+     * Historical values: "CONFIRMED", "UNCONFIRMED", "REJECTED", "MANUAL".
+     * New entries use a simple "FLAGGED" placeholder.
      */
-    var status: String = "UNCONFIRMED",
+    var status: String = "FLAGGED",
 
-    // --- Per-sensor confidence values (filled by FusionEngine) ----------
+    // --- Per-sensor confidence values (legacy — no longer written) -------
     val cameraConfidence: Float? = null,
     val audioConfidence: Float? = null,
     val motionConfidence: Float? = null,
 
-    /** |-separated "sensor:0.xx" pairs for extra sensors present in the window (see FusionEngine). */
+    /** Legacy sensor breakdown — no longer written. */
     val sensorBreakdown: String? = null,
+
+    // --- Deviation context (new) ------------------------------------------
+    /** The sensor's running baseline mean at the time of flagging, or null. */
+    val baselineValue: Double? = null,
+
+    /** The raw sensor reading that triggered the flag, or null. */
+    val observedValue: Double? = null,
+
+    /** Number of standard deviations from baseline, or null. */
+    val deviationSigma: Double? = null,
 
     // --- Evidence files (filled after capture) -----------------------
     /** Absolute path to the saved audio clip, or null if not available. */

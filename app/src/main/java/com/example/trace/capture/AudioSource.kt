@@ -185,7 +185,14 @@ class AudioSource(
         }
 
         if (confidence > 0f) {
-            onObservation(Observation("audio", confidence, tMs))
+            onObservation(Observation(
+                source = "audio",
+                confidence = confidence,
+                timestamp = tMs,
+                baselineValue = rmsBaseline.baselineMean,
+                observedValue = rms,
+                deviationSigma = sigma,
+            ))
         }
     }
 

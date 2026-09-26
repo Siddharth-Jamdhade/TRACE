@@ -152,7 +152,14 @@ class CameraSource(
                     toConfidence(ratio, 0.05f, 0.30f)
                 }
                 if (confidence > 0f) {
-                    onObservation(Observation("camera", confidence, tMs))
+                    onObservation(Observation(
+                        source = "camera",
+                        confidence = confidence,
+                        timestamp = tMs,
+                        baselineValue = baseline.baselineMean,
+                        observedValue = ratio.toDouble(),
+                        deviationSigma = sigma,
+                    ))
                 }
             }
             previousFrame = scaled

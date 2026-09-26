@@ -11,7 +11,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * Current schema version. Bump this AND add the matching migration to
  * [TraceDatabase.MIGRATIONS] whenever an entity changes.
  */
-internal const val TRACE_DB_VERSION = 6
+internal const val TRACE_DB_VERSION = 7
 
 /**
  * Oldest schema version this build can open without destroying evidence.
@@ -29,6 +29,7 @@ internal const val TRACE_DB_OLDEST_SUPPORTED = 2
 //   v4 — v3 + sessions table, and events.sessionId (one chain per session)
 //   v5 — v4 + events.evidencePhotoPath (camera snapshot per event)
 //   v6 — v5 + events.clipHash / photoHash (evidence file integrity)
+//   v7 — v6 + events.baselineValue / observedValue / deviationSigma (deviation context)
 @Database(entities = [Event::class, Session::class], version = TRACE_DB_VERSION)
 abstract class TraceDatabase : RoomDatabase() {
     abstract fun eventDao(): EventDao
@@ -102,13 +103,22 @@ abstract class TraceDatabase : RoomDatabase() {
             }
         }
 
+        /** v6 → v7: deviation context (baseline mean, observed value, sigma). */
+        val MIGRATION_6_7: Migration = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE events ADD COLUMN baselineValue REAL")
+                db.execSQL("ALTER TABLE events ADD COLUMN observedValue REAL")
+                db.execSQL("ALTER TABLE events ADD COLUMN deviationSigma REAL")
+            }
+        }
+
         /**
          * Every migration this build ships. The range
          * [TRACE_DB_OLDEST_SUPPORTED] .. [TRACE_DB_VERSION] must be fully
          * covered — enforced by DatabaseMigrationTest.
          */
         val MIGRATIONS: Array<Migration> =
-            arrayOf(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+            arrayOf(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
 
         @Volatile private var INSTANCE: TraceDatabase? = null
 

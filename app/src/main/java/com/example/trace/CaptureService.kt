@@ -255,10 +255,8 @@ class CaptureService : Service(), LifecycleOwner {
         const val ACTION_CAPTURE_FOR_EVENT = "com.example.trace.action.CAPTURE_FOR_EVENT"
         const val EXTRA_EVENT_ID = "eventId"
 
-        private const val CHANNEL_ALERTS = "trace_alerts_v2"
         private const val CHANNEL_CAPTURE = "trace_capture_v1"
         private const val NOTIF_CAPTURE_ID = 42
-        private const val LEGACY_NOTIF_CHANNEL_ID = "trace_confirmed"
 
         /** True while the foreground service owns capture. UI reads this. */
         @Volatile
@@ -370,95 +368,68 @@ class CaptureService : Service(), LifecycleOwner {
             setSound(null, null)
             enableVibration(false)
         }
-        val alerts = android.app.NotificationChannel(
-            CHANNEL_ALERTS, "TRACE Confirmed Events",
-            android.app.NotificationManager.IMPORTANCE_LOW,
-        ).apply {
-            description = "Silent alert when TRACE confirms an incident via multi-sensor fusion"
-            setSound(null, null)
-            enableVibration(false)
-            enableLights(false)
-        }
         manager.createNotificationChannel(capture)
-        manager.createNotificationChannel(alerts)
-        manager.deleteNotificationChannel(LEGACY_NOTIF_CHANNEL_ID)
     }
 
     // ── The pipeline ──────────────────────────────────────────────────────
 
     /**
      * Central observation handler. Receives observations from all capture
-     * sources, extracts event types, applies cooldown, serializes through
-     * [ChainWriter], fuses via [FusionEngine], persists evidence, and
-     * broadcasts state to [LiveBus].
+     * sources and records each as a generic deviation entry — no activity label,
+     * no fusion status, no CONFIRMED/UNCONFIRMED/REJECTED.
+     *
+     * Each deviation is self-contained: the sensor source, its running baseline
+     * at detection time, the value that triggered it, and the magnitude of
+     * deviation. Interpretation is left to the AI review layer.
+     *
+     * Cooldown prevents sensor-level spam while allowing independent sensors to
+     * each flag at their own rate.
      */
     private fun onObservation(obs: Observation) {
         val sessionId = SessionManager.activeSessionId ?: return
         if (EvidenceLock.isLocked(this)) return
 
-        val eventType = EventExtractor.extract(obs) ?: return
-
-        // Cooldown in the monotonic clock domain (no clock-jump risk).
-        val lastTime = lastEventTime[eventType] ?: 0L
+        // Cooldown per sensor source (prevents spam while allowing
+        // independent sensors to each flag at their own rate).
+        val lastTime = lastEventTime[obs.source] ?: 0L
         if (obs.timestamp - lastTime < EVENT_COOLDOWN_MS) return
-        lastEventTime[eventType] = obs.timestamp
+        lastEventTime[obs.source] = obs.timestamp
 
+        // Create a generic deviation entry — no activity label, no fusion.
         val baseEvent = Event(
-            type = eventType,
-            timestamp = obs.timestamp,  // monotonic — stored as-is
+            type = obs.source,     // use sensor name as the generic "type"
+            timestamp = obs.timestamp,
             source = obs.source,
             confidence = obs.confidence,
+            baselineValue = obs.baselineValue,
+            observedValue = obs.observedValue,
+            deviationSigma = obs.deviationSigma,
         )
 
         serviceScope.launch {
             val session = database.sessionDao().getSessionById(sessionId) ?: return@launch
             if (session.state != Session.STATE_ACTIVE) return@launch
 
-            // Fusion window in monotonic domain
-            val windowStart = obs.timestamp - FusionEngine.FUSION_WINDOW_MS
-            val windowEnd = obs.timestamp + FusionEngine.FUSION_WINDOW_MS
-            val windowEvents = database.eventDao()
-                .getEventsInWindowForSession(session.id, windowStart, windowEnd)
-
-            val finalEvent = ChainWriter.append(database.eventDao(), session, baseEvent) { inserted ->
-                FusionEngine.buildEnrichedEvent(inserted, windowEvents)
-            }
+            // Write to hash chain without enrichment or fusion.
+            val finalEvent = ChainWriter.append(database.eventDao(), session, baseEvent)
             val newId = finalEvent.id
-            Log.d("TRACE", "EVENT SAVED: id=$newId type=$eventType status=${finalEvent.status}")
+            Log.d("TRACE", "DEVIATION SAVED: id=$newId source=${obs.source} confidence=${obs.confidence}")
 
             LiveBus.eventCount += 1
             LiveBus.log.append(
                 SessionLog.Kind.EVENT,
-                "${SensorRegistry.iconFor(obs.source)} ${eventType.replace("_", " ")}" +
-                    " · ${SensorRegistry.labelFor(obs.source)} · ${finalEvent.status}",
+                "${SensorRegistry.iconFor(obs.source)} ${SensorRegistry.labelFor(obs.source)} deviation" +
+                    " · ${"%.0f".format(obs.confidence * 100)}%",
                 finalEvent.timestamp,
             )
             LiveBus.setConfidence(obs.source, obs.confidence)
 
-            if (finalEvent.status == "CONFIRMED") {
-                LiveBus.lastConfirmedAt = System.currentTimeMillis()
-                LiveBus.lastConfirmedText =
-                    "CONFIRMED · ${eventType.replace("_", " ").replaceFirstChar { it.uppercase() }}" +
-                        " · ${"%.0f".format(finalEvent.confidence * 100)}%"
-                fireConfirmedNotification(eventType)
-            }
-
-            // Evidence clip + snapshot
+            // Evidence clip + snapshot (unchanged)
             val clipPath = audioSource?.saveEvidenceClip(newId)
             if (clipPath != null) {
                 database.eventDao().updateClipPath(newId, clipPath)
             }
             cameraSource?.takeSnapshot(newId)
-
-            // Re-fuse window now that this event is persisted
-            val updatedWindow = database.eventDao()
-                .getEventsInWindowForSession(session.id, windowStart, windowEnd)
-            val fusedStatus = FusionEngine.determineStatus(updatedWindow)
-            updatedWindow.forEach { e ->
-                if (!FusionEngine.isHumanAsserted(e) && e.status != fusedStatus) {
-                    database.eventDao().updateStatus(e.id, fusedStatus)
-                }
-            }
 
             updateNotification()
         }
@@ -470,23 +441,6 @@ class CaptureService : Service(), LifecycleOwner {
             audioSource?.saveEvidenceClip(eventId)
             cameraSource?.takeSnapshot(eventId)
         }
-    }
-
-    private fun fireConfirmedNotification(eventType: String) {
-        if (ContextCompat.checkSelfPermission(
-                this, android.Manifest.permission.POST_NOTIFICATIONS,
-            ) != android.content.pm.PackageManager.PERMISSION_GRANTED
-        ) return
-
-        val notification = NotificationCompat.Builder(this, CHANNEL_ALERTS)
-            .setSmallIcon(android.R.drawable.ic_dialog_alert)
-            .setContentTitle("CONFIRMED: ${eventType.replace("_", " ").replaceFirstChar { it.uppercase() }}")
-            .setContentText("Multi-sensor agreement detected")
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setAutoCancel(true)
-            .build()
-        getSystemService(NotificationManager::class.java)
-            .notify((System.currentTimeMillis() and 0xFFFF).toInt(), notification)
     }
 }
 
@@ -502,13 +456,6 @@ object LiveBus {
 
     @Volatile
     var eventCount: Int = 0
-
-    /** Wall-clock of the most recent CONFIRMED, and the banner text for it. */
-    @Volatile
-    var lastConfirmedAt: Long = 0L
-
-    @Volatile
-    var lastConfirmedText: String = ""
 
     @Volatile
     var confCamera: Float = 0f

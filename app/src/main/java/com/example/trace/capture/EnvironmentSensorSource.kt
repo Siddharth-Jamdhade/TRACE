@@ -73,7 +73,14 @@ class EnvironmentSensorSource(
             toConfidence(mag, DEFAULT_MAG_THRESHOLD, DEFAULT_MAG_MAX)
         }
         if (confidence > 0f) {
-            onObservation(Observation("magnetometer", confidence, tMs))
+            onObservation(Observation(
+                source = "magnetometer",
+                confidence = confidence,
+                timestamp = tMs,
+                baselineValue = magBaseline.baselineMean,
+                observedValue = mag.toDouble(),
+                deviationSigma = sigma,
+            ))
         }
     }
 
@@ -87,7 +94,14 @@ class EnvironmentSensorSource(
             toConfidence(hPa, DEFAULT_BARO_THRESHOLD, DEFAULT_BARO_MAX)
         }
         if (confidence > 0f) {
-            onObservation(Observation("barometer", confidence, tMs))
+            onObservation(Observation(
+                source = "barometer",
+                confidence = confidence,
+                timestamp = tMs,
+                baselineValue = pressureBaseline.baselineMean,
+                observedValue = hPa.toDouble(),
+                deviationSigma = sigma,
+            ))
         }
     }
 
@@ -106,7 +120,14 @@ class EnvironmentSensorSource(
             } else 0f
         }
         if (confidence > 0f) {
-            onObservation(Observation("light", confidence, tMs))
+            onObservation(Observation(
+                source = "light",
+                confidence = confidence,
+                timestamp = tMs,
+                baselineValue = lightBaseline.baselineMean,
+                observedValue = lux.toDouble(),
+                deviationSigma = sigma,
+            ))
         }
     }
 

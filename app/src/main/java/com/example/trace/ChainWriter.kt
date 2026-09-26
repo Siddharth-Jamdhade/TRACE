@@ -37,18 +37,16 @@ object ChainWriter {
      * the same session. Chains therefore never cross sessions, and damaging one
      * session cannot invalidate another.
      *
-     * @param enrich maps the freshly inserted event (whose `id` has now been
-     *   assigned) into the row to store — normally
-     *   [FusionEngine.buildEnrichedEvent] over a fusion window that includes
-     *   the new event. It runs inside the lock, so it may query the database
-     *   but must not do file or network IO.
+     * Unlike the legacy version, there is no enrichment step — each event
+     * stands alone as a self-contained deviation entry with no fusion or
+     * status labeling.
+     *
      * @return the stored event, with [Event.previousHash] and [Event.hash] set.
      */
     suspend fun append(
         dao: EventDao,
         session: Session,
         event: Event,
-        enrich: suspend (Event) -> Event = { it }
     ): Event = mutex.withLock {
         // Read the tip and write the new link while holding the lock, so no
         // other event can be inserted in between.
@@ -56,9 +54,8 @@ object ChainWriter {
 
         val inserted = event.copy(sessionId = session.id)
         val stored = inserted.copy(id = dao.insert(inserted))
-        val enriched = enrich(stored)
-        val finalEvent = enriched.copy(
-            hash = HashChain.computeHash(enriched, previousHash),
+        val finalEvent = stored.copy(
+            hash = HashChain.computeHash(stored, previousHash),
             previousHash = previousHash
         )
 

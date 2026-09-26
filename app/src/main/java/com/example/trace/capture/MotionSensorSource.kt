@@ -85,7 +85,14 @@ class MotionSensorSource(
 
         lastX = x; lastY = y; lastZ = z
         if (confidence > 0f) {
-            onObservation(Observation("motion", confidence, tMs))
+            onObservation(Observation(
+                source = "motion",
+                confidence = confidence,
+                timestamp = tMs,
+                baselineValue = motBaseline.baselineMean,
+                observedValue = jerk.toDouble(),
+                deviationSigma = sigma,
+            ))
         }
         accelMeter.tick(tMs)
     }
@@ -100,7 +107,14 @@ class MotionSensorSource(
         val sigma = gyroBaseline.deviationSigma(mag.toDouble())
         val confidence = toConfidence(mag, 1.5f, 8f)
         if (confidence > 0f) {
-            onObservation(Observation("gyroscope", confidence, tMs))
+            onObservation(Observation(
+                source = "gyroscope",
+                confidence = confidence,
+                timestamp = tMs,
+                baselineValue = gyroBaseline.baselineMean,
+                observedValue = mag.toDouble(),
+                deviationSigma = sigma,
+            ))
         }
     }
 
@@ -115,7 +129,14 @@ class MotionSensorSource(
         // Free-fall: lower magnitude = higher confidence
         val confidence = if (mag < 2.5f) toConfidence(2.5f - mag, 0f, 2.5f) else 0f
         if (confidence > 0f) {
-            onObservation(Observation("linear", confidence, tMs))
+            onObservation(Observation(
+                source = "linear",
+                confidence = confidence,
+                timestamp = tMs,
+                baselineValue = linearBaseline.baselineMean,
+                observedValue = mag.toDouble(),
+                deviationSigma = sigma,
+            ))
         }
     }
 
