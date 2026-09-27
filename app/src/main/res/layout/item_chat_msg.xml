@@ -2,31 +2,47 @@
 <!--
   Chat message bubble — one per message in the chat transcript.
 
-  Sender and AI messages are distinguished by which layout gravity the adapter
-  sets: sender messages get android:layout_gravity="end" with a primary-colour
-  bubble, AI messages get "start" with a surface-variant bubble. The corner
-  radius is applied via a shape drawable in code so each side can have its own
-  rounding (a tail effect on the sender's side).
+  The LinearLayout container is positioned via layout_gravity (START for AI,
+  END for user) by the adapter. Each message carries a formatted timestamp.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:paddingStart="12dp"
-    android:paddingEnd="12dp"
+    android:paddingStart="8dp"
+    android:paddingEnd="8dp"
     android:paddingTop="3dp"
     android:paddingBottom="3dp">
 
-    <TextView
-        android:id="@+id/tvBubble"
+    <LinearLayout
+        android:id="@+id/bubbleContainer"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:maxWidth="300dp"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:paddingTop="10dp"
-        android:paddingBottom="10dp"
-        android:textSize="14sp"
-        android:lineSpacingExtra="3dp"
-        android:textColor="?attr/colorOnSurface" />
+        android:orientation="vertical"
+        android:layout_gravity="start">
+
+        <TextView
+            android:id="@+id/tvBubble"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:maxWidth="300dp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp"
+            android:textSize="14sp"
+            android:lineSpacingExtra="3dp"
+            android:textColor="?attr/colorOnSurface" />
+
+        <TextView
+            android:id="@+id/tvTimestamp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="10sp"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:paddingStart="4dp"
+            android:paddingTop="2dp"
+            android:visibility="gone" />
+
+    </LinearLayout>
 
 </FrameLayout>
